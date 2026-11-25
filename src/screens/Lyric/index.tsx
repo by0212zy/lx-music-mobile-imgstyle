@@ -35,15 +35,17 @@ export default memo(({ componentId }: { componentId: string }) => {
   const statusBarHeight = useStatusbarHeight()
   const fontWeight = useSettingValue('playDetail.lyricFontWeight') ?? 800
   const lineSpacing = useSettingValue('playDetail.lyricLineSpacing') ?? 10
+  const bottomBlankLines = useSettingValue('playDetail.lyricBottomBlankLines') ?? 0
   // 字号设置生效：设置项单位为 0.1px（默认 210 = 21px）
   const lrcFontSize = useSettingValue('playDetail.vertical.style.lrcFontSize') ?? 210
   const fontSize = lrcFontSize / 10
 
   // 实际可用高度由布局测量得到，行数随屏幕、字号与行间距自适应，避免底部空白
-  const [contentHeight, setContentHeight] = useState(Math.max(240, height - statusBarHeight - 58 - 132))
+  const [contentHeight, setContentHeight] = useState(Math.max(240, height - statusBarHeight - 58 - 100))
   // 基础行高随字号缩放；行间距为 0 时更紧凑
   const lineHeight = Math.max(26, Math.round(fontSize * 1.3) + lineSpacing)
-  const linesPerPage = clamp(Math.floor(contentHeight / lineHeight), 3, 40)
+  // 底部保留 N 行空白：可用行数减少对应行数
+  const linesPerPage = clamp(Math.floor(contentHeight / lineHeight) - bottomBlankLines, 1, 40)
 
   const handlePagerLayout = useCallback(({ nativeEvent }: LayoutChangeEvent) => {
     const nextHeight = nativeEvent.layout.height
@@ -366,16 +368,15 @@ const styles = createStyle({
     marginTop: 60,
   },
   footer: {
-    height: 132,
+    paddingTop: 12,
     paddingBottom: 18,
-    justifyContent: 'flex-end',
     backgroundColor: '#1B1530',
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.05)',
   },
   pageIndicator: {
     textAlign: 'center',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   controls: {
     flexDirection: 'row',

@@ -13,6 +13,7 @@ import { useI18n } from '@/lang'
 import Text from '@/components/common/Text'
 import { handlePlay } from './listAction'
 import { useSettingValue } from '@/store/setting/hook'
+import DraggableScrollBar, { type DraggableScrollBarType } from './DraggableScrollBar'
 
 type FlatListType = FlatListProps<LX.Music.MusicInfoOnline>
 
@@ -59,6 +60,7 @@ const List = forwardRef<ListType, ListProps>(({
   // const t = useI18n()
   const theme = useTheme()
   const flatListRef = useRef<FlatList>(null)
+  const scrollBarRef = useRef<DraggableScrollBarType>(null)
   const [currentList, setList] = useState<LX.Music.MusicInfoOnline[]>([])
   const [showSource, setShowSource] = useState(false)
   const isMultiSelectModeRef = useRef(false)
@@ -229,30 +231,44 @@ const List = forwardRef<ListType, ListProps>(({
     )
   }, [onLoadMore, status, visibleMultiSelect])
 
+  const columns = rowInfo.current.rowNum ?? 1
+
   return (
-    <FlatList
-      ref={flatListRef}
-      style={styles.list}
-      data={currentList}
-      numColumns={rowInfo.current.rowNum}
-      horizontal={false}
-      maxToRenderPerBatch={4}
-      // updateCellsBatchingPeriod={80}
-      windowSize={8}
-      removeClippedSubviews={true}
-      initialNumToRender={12}
-      renderItem={renderItem}
-      keyExtractor={getkey}
-      getItemLayout={getItemLayout}
-      // onRefresh={onRefresh}
-      // refreshing={refreshing}
-      onEndReachedThreshold={0.5}
-      onEndReached={handleLoadMore}
-      progressViewOffset={progressViewOffset}
-      ListHeaderComponent={ListHeaderComponent}
-      refreshControl={refreshControl}
-      ListFooterComponent={footerComponent}
-    />
+    <View style={styles.listContainer}>
+      <FlatList
+        ref={flatListRef}
+        style={styles.list}
+        data={currentList}
+        numColumns={columns}
+        horizontal={false}
+        showsVerticalScrollIndicator={false}
+        maxToRenderPerBatch={4}
+        // updateCellsBatchingPeriod={80}
+        windowSize={8}
+        removeClippedSubviews={true}
+        initialNumToRender={12}
+        renderItem={renderItem}
+        keyExtractor={getkey}
+        getItemLayout={getItemLayout}
+        onScroll={e => { scrollBarRef.current?.onScroll(e) }}
+        scrollEventThrottle={16}
+        // onRefresh={onRefresh}
+        // refreshing={refreshing}
+        onEndReachedThreshold={0.5}
+        onEndReached={handleLoadMore}
+        progressViewOffset={progressViewOffset}
+        ListHeaderComponent={ListHeaderComponent}
+        refreshControl={refreshControl}
+        ListFooterComponent={footerComponent}
+      />
+      <DraggableScrollBar
+        ref={scrollBarRef}
+        listRef={flatListRef}
+        itemHeight={ITEM_HEIGHT}
+        columns={columns}
+        count={currentList.length}
+      />
+    </View>
   )
 })
 
@@ -281,6 +297,10 @@ const Footer = ({ label, onLoadMore }: {
 const styles = createStyle({
   container: {
     flex: 1,
+  },
+  listContainer: {
+    flex: 1,
+    position: 'relative',
   },
   list: {
     flexGrow: 1,

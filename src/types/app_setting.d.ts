@@ -252,6 +252,16 @@ declare global {
       'playDetail.skipOutro': number
 
       /**
+       * 图片样式歌词页-底部保留的空白行数
+       */
+      'playDetail.lyricBottomBlankLines': number
+
+      /**
+       * 网络歌单-请求歌曲数量上限
+       */
+      'list.networkListLimit': number
+
+      /**
        * 是否启用桌面歌词
        */
       'desktopLyric.enable': boolean

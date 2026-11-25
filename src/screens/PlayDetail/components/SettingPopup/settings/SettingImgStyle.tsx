@@ -44,6 +44,74 @@ export const SettingLyricFontWeight = () => {
   )
 }
 
+export const SettingLyricBottomBlankLines = () => {
+  const theme = useTheme()
+  const blankLines = useSettingValue('playDetail.lyricBottomBlankLines') ?? 0
+  const [sliderValue, setSliderValue] = useState(blankLines)
+  const [isSliding, setSliding] = useState(false)
+
+  const handleSlidingStart: SliderProps['onSlidingStart'] = value => {
+    setSliding(true)
+  }
+  const handleValueChange: SliderProps['onValueChange'] = value => {
+    setSliderValue(value)
+  }
+  const handleSlidingComplete: SliderProps['onSlidingComplete'] = value => {
+    setSliding(false)
+    if (blankLines === value) return
+    updateSetting({ 'playDetail.lyricBottomBlankLines': value })
+  }
+
+  return (
+    <View style={styles.container}>
+      <Text>歌词页底部空白行数</Text>
+      <View style={styles.content}>
+        <Text style={styles.label} color={theme['c-font-label']}>{isSliding ? sliderValue : blankLines} 行</Text>
+        <Slider
+          minimumValue={0}
+          maximumValue={6}
+          step={1}
+          value={blankLines}
+          onSlidingStart={handleSlidingStart}
+          onValueChange={handleValueChange}
+          onSlidingComplete={handleSlidingComplete}
+        />
+      </View>
+    </View>
+  )
+}
+
+export const SettingNetworkListLimit = () => {
+  const theme = useTheme()
+  const limit = useSettingValue('list.networkListLimit') ?? 1000
+  const options = [500, 1000, 1500, 2000, 3000, 5000]
+
+  return (
+    <View style={styles.container}>
+      <Text>网络歌单请求歌曲数</Text>
+      <View style={styles.list}>
+        {options.map(item => (
+          <TouchableOpacity
+            key={item}
+            activeOpacity={0.6}
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 7,
+              borderRadius: 8,
+              marginRight: 8,
+              marginTop: 4,
+              backgroundColor: limit === item ? theme['c-primary'] : 'rgba(128,128,128,0.18)',
+            }}
+            onPress={() => { updateSetting({ 'list.networkListLimit': item }) }}
+          >
+            <Text size={13} color={limit === item ? '#FFFFFF' : theme['c-font']}>{item}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  )
+}
+
 export const SettingLyricLineSpacing = () => {
   const theme = useTheme()
   const lineSpacing = useSettingValue('playDetail.lyricLineSpacing') ?? 10

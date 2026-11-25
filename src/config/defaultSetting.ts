@@ -45,6 +45,8 @@ const defaultSetting: LX.AppSetting = {
   'playDetail.lyricLineSpacing': 10,
   'playDetail.skipIntro': 0,
   'playDetail.skipOutro': 0,
+  'playDetail.lyricBottomBlankLines': 0,
+  'list.networkListLimit': 1000,
 
   'desktopLyric.enable': false,
   'desktopLyric.isLock': false,

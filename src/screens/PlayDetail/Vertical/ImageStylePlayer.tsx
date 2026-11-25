@@ -17,8 +17,7 @@ import { useBufferProgress } from '@/plugins/player'
 import { playNext, playPrev, togglePlay } from '@/core/player/player'
 import { navigations, pop, popToRoot } from '@/navigation'
 import { NAV_SHEAR_NATIVE_IDS } from '@/config/constant'
-import { createStyle, shareMusic } from '@/utils/tools'
-import settingState from '@/store/setting/state'
+import { createStyle } from '@/utils/tools'
 
 // 图片样式：播放页（黑紫渐变 + 唱片封面 + 蓝色主按钮）
 export default memo(({ componentId }: { componentId: string }) => {
@@ -65,12 +64,6 @@ export default memo(({ componentId }: { componentId: string }) => {
     global.app_event.setProgress(target)
   }, [nowPlayTime, maxPlayTime])
 
-  const baseInfo = ((musicInfo as unknown as { metadata?: { musicInfo: LX.Music.MusicInfo } }).metadata?.musicInfo ?? musicInfo) as unknown as LX.Music.MusicInfo
-
-  const handleShare = useCallback(() => {
-    shareMusic(settingState.setting['common.shareType'], settingState.setting['download.fileName'], baseInfo)
-  }, [baseInfo])
-
   const handleBack = () => {
     void pop(componentId)
   }
@@ -102,9 +95,6 @@ export default memo(({ componentId }: { componentId: string }) => {
           <TouchableOpacity style={styles.gainBtn} activeOpacity={0.6} onPress={() => settingPopupRef.current?.show()}>
             <Icon name="setting" color="#FFFFFF" size={16} />
             <Text size={12} color="#FFFFFF" style={styles.gainBtnText}>设置</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.headerRoundBtn} activeOpacity={0.6} onPress={handleShare}>
-            <Icon name="share" color="#FFFFFF" size={18} />
           </TouchableOpacity>
         </View>
       </View>
@@ -240,7 +230,6 @@ const styles = createStyle({
     paddingVertical: 8,
     borderRadius: 10,
     backgroundColor: 'rgba(255,255,255,0.06)',
-    marginRight: 8,
   },
   gainBtnText: {
     fontWeight: '500',
