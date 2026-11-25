@@ -9,6 +9,7 @@ import playerState from '@/store/player/state'
 import settingState from '@/store/setting/state'
 import { onScreenStateChange } from '@/utils/nativeModules/utils'
 import { AppState } from 'react-native'
+import { playNext } from '@/core/player/player'
 
 const delaySavePlayInfo = throttleBackgroundTimer(() => {
   void savePlayInfo({
@@ -23,6 +24,8 @@ export default () => {
   // const updateMusicInfo = useCommit('list', 'updateMusicInfo')
 
   let updateTimeout: number | null = null
+  let introSkippedId: string | null = ''
+  let outroSkippedId: string | null = ''
 
   let isScreenOn = true
 
@@ -30,6 +33,25 @@ export default () => {
     let id = playerState.musicInfo.id
     void getPosition().then(position => {
       if (!position || id != playerState.musicInfo.id) return
+
+      // 图片样式版：跳过片头 / 片尾
+      const skipIntro = settingState.setting['playDetail.skipIntro'] ?? 0
+      const skipOutro = settingState.setting['playDetail.skipOutro'] ?? 0
+      if (skipIntro > 0 && introSkippedId !== id && position < skipIntro) {
+        introSkippedId = id
+        setNowPlayTime(skipIntro)
+        void setCurrentTime(skipIntro)
+        return
+      }
+      if (skipOutro > 0 && outroSkippedId !== id) {
+        const maxTime = playerState.progress.maxPlayTime
+        if (maxTime > skipOutro && position >= maxTime - skipOutro) {
+          outroSkippedId = id
+          void playNext()
+          return
+        }
+      }
+
       setNowPlayTime(position)
       if (!playerState.isPlay) return
 
@@ -113,6 +135,8 @@ export default () => {
 
 
   const handleSetPlayInfo = () => {
+    introSkippedId = ''
+    outroSkippedId = ''
     // restorePlayTime = playProgress.nowPlayTime
     // void setCurrentTime(playerState.progress.nowPlayTime)
     // setMaxplayTime(playProgress.maxPlayTime)

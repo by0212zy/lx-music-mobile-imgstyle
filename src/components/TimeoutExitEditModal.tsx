@@ -1,7 +1,7 @@
 import { useRef, useImperativeHandle, forwardRef, useState, useEffect } from 'react'
 import ConfirmAlert, { type ConfirmAlertType } from '@/components/common/ConfirmAlert'
 import Text from '@/components/common/Text'
-import { View } from 'react-native'
+import { View, TouchableOpacity } from 'react-native'
 import Input, { type InputType } from '@/components/common/Input'
 import { createStyle, toast } from '@/utils/tools'
 import { useTheme } from '@/store/theme/hook'
@@ -150,6 +150,7 @@ export default forwardRef<TimeoutExitEditModalType, TimeoutExitEditModalProps>((
   const timeInputRef = useRef<TimeInputType>(null)
   const [visible, setVisible] = useState(false)
   const t = useI18n()
+  const theme = useTheme()
 
   const handleShow = () => {
     alertRef.current?.setVisible(true)
@@ -215,6 +216,18 @@ export default forwardRef<TimeoutExitEditModalType, TimeoutExitEditModalProps>((
         >
           <View style={styles.alertContent}>
             <Status />
+            <View style={styles.presetRow}>
+              {[5, 10, 15, 30, 45, 60, 90, 120].map(min => (
+                <TouchableOpacity
+                  key={min}
+                  activeOpacity={0.6}
+                  style={styles.presetChip}
+                  onPress={() => timeInputRef.current?.setText(String(min))}
+                >
+                  <Text size={12} color={theme['c-font']}>{min} 分钟</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
             <View style={styles.inputContent}>
               <TimeInput ref={timeInputRef} />
               <Text style={styles.inputLabel}>{t('timeout_exit_min')}</Text>
@@ -233,6 +246,20 @@ const styles = createStyle({
   },
   tip: {
     marginBottom: 8,
+  },
+  presetRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  presetChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginRight: 6,
+    marginBottom: 6,
+    backgroundColor: 'rgba(128,128,128,0.18)',
   },
   checkbox: {
     marginTop: 5,

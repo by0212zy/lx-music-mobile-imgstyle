@@ -232,6 +232,26 @@ declare global {
       'playDetail.isShowLyricProgressSetting': boolean
 
       /**
+       * 图片样式歌词页-歌词字体粗细
+       */
+      'playDetail.lyricFontWeight': number
+
+      /**
+       * 图片样式歌词页-歌词行间距
+       */
+      'playDetail.lyricLineSpacing': number
+
+      /**
+       * 图片样式播放页-跳过片头秒数
+       */
+      'playDetail.skipIntro': number
+
+      /**
+       * 图片样式播放页-跳过片尾秒数
+       */
+      'playDetail.skipOutro': number
+
+      /**
        * 是否启用桌面歌词
        */
       'desktopLyric.enable': boolean

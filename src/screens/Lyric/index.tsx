@@ -1,11 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { View, TouchableOpacity, StatusBar as RNStatusBar } from 'react-native'
+import { View, TouchableOpacity, StatusBar as RNStatusBar, type LayoutChangeEvent } from 'react-native'
 import PagerView, { type PagerViewOnPageSelectedEvent } from 'react-native-pager-view'
 
 import PageContent from '@/components/PageContent'
 import Text from '@/components/common/Text'
 import { Icon } from '@/components/common/Icon'
 import { useStatusbarHeight } from '@/store/common/hook'
+import { useSettingValue } from '@/store/setting/hook'
 import { usePlayerMusicInfo, useIsPlay } from '@/store/player/hook'
 import { useWindowSize } from '@/utils/hooks'
 import { type Line, useLrcPlay, useLrcSet } from '@/plugins/lyric'
@@ -19,8 +20,6 @@ import { createStyle } from '@/utils/tools'
 // 3. 左右滑动只翻页，不同步播放进度
 // 4. 歌词字体加粗
 
-const LINE_HEIGHT = 56
-
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
 export default memo(({ componentId }: { componentId: string }) => {
@@ -30,12 +29,18 @@ export default memo(({ componentId }: { componentId: string }) => {
   const { line: playLine } = useLrcPlay()
   const { height } = useWindowSize()
   const statusBarHeight = useStatusbarHeight()
+  const fontWeight = useSettingValue('playDetail.lyricFontWeight') ?? 800
+  const lineSpacing = useSettingValue('playDetail.lyricLineSpacing') ?? 10
 
-  const contentHeight = Math.max(
-    240,
-    height - statusBarHeight - 102 - 132 - 16,
-  )
-  const linesPerPage = clamp(Math.floor(contentHeight / LINE_HEIGHT), 4, 20)
+  // 实际可用高度由布局测量得到，行数随屏幕与行间距自适应，避免底部空白
+  const [contentHeight, setContentHeight] = useState(Math.max(240, height - statusBarHeight - 58 - 132))
+  const lineHeight = 46 + lineSpacing
+  const linesPerPage = clamp(Math.floor(contentHeight / lineHeight), 3, 30)
+
+  const handlePagerLayout = useCallback(({ nativeEvent }: LayoutChangeEvent) => {
+    const nextHeight = nativeEvent.layout.height
+    if (Math.abs(nextHeight - contentHeight) > 1) setContentHeight(nextHeight)
+  }, [contentHeight])
 
   const pages = useMemo(() => {
     const result: Array<{ start: number, lines: Array<{ index: number, text: string }> }> = []
@@ -134,6 +139,18 @@ export default memo(({ componentId }: { componentId: string }) => {
     global.app_event.setProgress((lyricLines[lineIndex]?.time ?? 0) / 1000)
   }, [pages, lyricLines])
 
+  // 播放/暂停时重新定位到当前播放歌词行
+  const handleTogglePlay = useCallback(() => {
+    togglePlay()
+    syncModeRef.current = true
+    setSelectedLine(null)
+    const target = clamp(Math.floor(Math.max(playLine, 0) / linesPerPage), 0, pages.length - 1)
+    programmaticRef.current = true
+    pageRef.current = target
+    setPage(target)
+    pagerRef.current?.setPage(target)
+  }, [playLine, linesPerPage, pages.length])
+
   const renderPage = (pageData: { start: number, lines: Array<{ index: number, text: string }> }) => (
     <View style={{ ...styles.page, height: contentHeight }} collapsable={false} key={pageData.start}>
       {
@@ -142,7 +159,7 @@ export default memo(({ componentId }: { componentId: string }) => {
             const active = index === highlightLine
             return (
               <TouchableOpacity
-                style={styles.lineRow}
+                style={{ ...styles.lineRow, height: lineHeight }}
                 activeOpacity={0.7}
                 key={index}
                 onPress={() => { handleLinePress(index) }}
@@ -151,7 +168,11 @@ export default memo(({ componentId }: { componentId: string }) => {
                 <Text
                   size={19}
                   numberOfLines={2}
-                  style={{ ...styles.lineText, color: active ? '#FFB300' : '#EDEAF5' }}
+                  style={{
+                    ...styles.lineText,
+                    color: active ? '#FFB300' : '#EDEAF5',
+                    fontWeight: String(fontWeight) as 'normal' | 'bold' | '400' | '500' | '600' | '700' | '800' | '900',
+                  }}
                 >{text}</Text>
               </TouchableOpacity>
             )
@@ -184,6 +205,7 @@ export default memo(({ componentId }: { componentId: string }) => {
           ref={pagerRef}
           initialPage={pageRef.current}
           onPageSelected={handlePageSelected}
+          onLayout={handlePagerLayout}
           style={styles.pager}
         >
           {pages.map(renderPage)}
@@ -199,7 +221,7 @@ export default memo(({ componentId }: { componentId: string }) => {
             >
               <Icon name="chevron-left" color="#C08CFF" size={26} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.playBtn} activeOpacity={0.7} onPress={togglePlay}>
+            <TouchableOpacity style={styles.playBtn} activeOpacity={0.7} onPress={handleTogglePlay}>
               <Icon name={isPlay ? 'pause' : 'play'} color="#FFFFFF" size={19} />
               <Text size={15} color="#FFFFFF" style={styles.playLabel}>{isPlay ? '暂停' : '播放'}</Text>
             </TouchableOpacity>
@@ -255,7 +277,6 @@ const styles = createStyle({
     paddingTop: 8,
   },
   lineRow: {
-    height: LINE_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
   },

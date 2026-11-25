@@ -5,14 +5,17 @@ import Image from '@/components/common/Image'
 import Text from '@/components/common/Text'
 import { Icon } from '@/components/common/Icon'
 import ProgressBar from '@/components/player/ProgressBar'
-import MusicAddModal, { type MusicAddModalType } from '@/components/MusicAddModal'
 import SettingPopup, { type SettingPopupType } from '../components/SettingPopup'
+import TimeoutExitEditModal, { type TimeoutExitEditModalType, useTimeInfo } from '@/components/TimeoutExitEditModal'
+import SkipIntroOutroModal, { type SkipIntroOutroModalType } from '@/components/SkipIntroOutroModal'
+import { CollectItem, CommentItem, MoreItem, PlayModeItem } from './ImageStyleMoreItems'
 import { usePlayerMusicInfo, useProgress, useIsPlay } from '@/store/player/hook'
+import { useSettingValue } from '@/store/setting/hook'
 import { useStatusbarHeight } from '@/store/common/hook'
 import { useWindowSize } from '@/utils/hooks'
 import { useBufferProgress } from '@/plugins/player'
-import { collectMusic, playNext, playPrev, togglePlay } from '@/core/player/player'
-import { navigations, pop } from '@/navigation'
+import { playNext, playPrev, togglePlay } from '@/core/player/player'
+import { navigations, pop, popToRoot } from '@/navigation'
 import { NAV_SHEAR_NATIVE_IDS } from '@/config/constant'
 import { createStyle, shareMusic } from '@/utils/tools'
 import settingState from '@/store/setting/state'
@@ -27,8 +30,11 @@ export default memo(({ componentId }: { componentId: string }) => {
   const statusBarHeight = useStatusbarHeight()
 
   const settingPopupRef = useRef<SettingPopupType>(null)
-  const musicAddModalRef = useRef<MusicAddModalType>(null)
+  const timeoutModalRef = useRef<TimeoutExitEditModalType>(null)
+  const skipModalRef = useRef<SkipIntroOutroModalType>(null)
   const spinValue = useRef(new Animated.Value(0)).current
+  const timeInfo = useTimeInfo()
+  const playbackRate = useSettingValue('player.playbackRate')
 
   useEffect(() => {
     if (!isPlay) return
@@ -61,14 +67,6 @@ export default memo(({ componentId }: { componentId: string }) => {
 
   const baseInfo = ((musicInfo as unknown as { metadata?: { musicInfo: LX.Music.MusicInfo } }).metadata?.musicInfo ?? musicInfo) as unknown as LX.Music.MusicInfo
 
-  const openMusicAddModal = useCallback(() => {
-    musicAddModalRef.current?.show({
-      musicInfo: baseInfo,
-      isMove: false,
-      listId: '',
-    })
-  }, [baseInfo])
-
   const handleShare = useCallback(() => {
     shareMusic(settingState.setting['common.shareType'], settingState.setting['download.fileName'], baseInfo)
   }, [baseInfo])
@@ -81,6 +79,11 @@ export default memo(({ componentId }: { componentId: string }) => {
   }
   const handleNext = () => {
     void playNext()
+  }
+  const handleOpenPlayList = () => {
+    void popToRoot(componentId).then(() => {
+      global.app_event.jumpListPosition()
+    })
   }
 
   return (
@@ -96,9 +99,6 @@ export default memo(({ componentId }: { componentId: string }) => {
             <Text size={12} color="#FFFFFF">正在播放</Text>
           </View>
           <View style={styles.headerSpacer} />
-          <TouchableOpacity style={styles.gainBtn} activeOpacity={0.6} onPress={() => settingPopupRef.current?.show()}>
-            <Text size={13} color="#FFFFFF">增益</Text>
-          </TouchableOpacity>
           <TouchableOpacity style={styles.headerRoundBtn} activeOpacity={0.6} onPress={handleShare}>
             <Icon name="share" color="#FFFFFF" size={18} />
           </TouchableOpacity>
@@ -158,30 +158,18 @@ export default memo(({ componentId }: { componentId: string }) => {
       </View>
 
       <View style={styles.moreRow}>
-        <TouchableOpacity style={styles.moreItem} activeOpacity={0.6} onPress={() => settingPopupRef.current?.show()}>
-          <View style={styles.moreIconBox}><Text size={15} color="#D8D3E8">1.0x</Text></View>
-          <Text size={11} color="#A9A2C0">倍速</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.moreItem} activeOpacity={0.6} onPress={() => settingPopupRef.current?.show()}>
-          <View style={styles.moreIconBox}><Icon name="music_time" color="#D8D3E8" size={18} /></View>
-          <Text size={11} color="#A9A2C0">定时</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.moreItem} activeOpacity={0.6} onPress={() => { seek(15) }}>
-          <View style={styles.moreIconBox}><Icon name="chevron-right-2" color="#D8D3E8" size={18} /></View>
-          <Text size={11} color="#A9A2C0">跳过</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.moreItem} activeOpacity={0.6} onPress={collectMusic}>
-          <View style={styles.moreIconBox}><Icon name="love" color="#D8D3E8" size={18} /></View>
-          <Text size={11} color="#A9A2C0">收藏</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.moreItem} activeOpacity={0.6} onPress={() => settingPopupRef.current?.show()}>
-          <View style={styles.moreIconBox}><Icon name="setting" color="#D8D3E8" size={18} /></View>
-          <Text size={11} color="#A9A2C0">定时</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.moreItem} activeOpacity={0.6} onPress={openMusicAddModal}>
-          <View style={styles.moreIconBox}><Icon name="download-2" color="#D8D3E8" size={18} /></View>
-          <Text size={11} color="#A9A2C0">下载</Text>
-        </TouchableOpacity>
+        <MoreItem label="倍速" onPress={() => settingPopupRef.current?.show()}>
+          <Text size={14} color="#D8D3E8">{playbackRate.toFixed(2).replace(/0$/, '')}x</Text>
+        </MoreItem>
+        <MoreItem label="定时" onPress={() => timeoutModalRef.current?.show()}>
+          <Icon name="music_time" color={timeInfo.active ? '#FFB300' : '#D8D3E8'} size={18} />
+        </MoreItem>
+        <MoreItem label="跳过" onPress={() => skipModalRef.current?.show()}>
+          <Icon name="chevron-right-2" color="#D8D3E8" size={18} />
+        </MoreItem>
+        <CollectItem />
+        <CommentItem />
+        <PlayModeItem />
       </View>
 
       <View style={styles.bottomBar} nativeID={NAV_SHEAR_NATIVE_IDS.playDetail_player}>
@@ -197,13 +185,14 @@ export default memo(({ componentId }: { componentId: string }) => {
         <TouchableOpacity style={styles.sideBtn} activeOpacity={0.6} onPress={handleNext}>
           <Icon name="nextMusic" color="#D8D3E8" size={26} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.bookBtn} activeOpacity={0.6} onPress={() => settingPopupRef.current?.show()}>
+        <TouchableOpacity style={styles.bookBtn} activeOpacity={0.6} onPress={handleOpenPlayList}>
           <Icon name="menu" color="#C08CFF" size={22} />
         </TouchableOpacity>
       </View>
 
       <SettingPopup ref={settingPopupRef} direction="vertical" />
-      <MusicAddModal ref={musicAddModalRef} />
+      <TimeoutExitEditModal ref={timeoutModalRef} timeInfo={timeInfo} />
+      <SkipIntroOutroModal ref={skipModalRef} />
     </View>
   )
 })

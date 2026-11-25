@@ -8,6 +8,7 @@ import SettingVolume from './settings/SettingVolume'
 import SettingPlaybackRate from './settings/SettingPlaybackRate'
 import SettingLrcFontSize from './settings/SettingLrcFontSize'
 import SettingLrcAlign from './settings/SettingLrcAlign'
+import { SettingLyricFontWeight, SettingLyricLineSpacing } from './settings/SettingImgStyle'
 
 export interface SettingPopupProps extends Omit<PopupProps, 'children'> {
   direction: 'vertical' | 'horizontal'
@@ -47,6 +48,8 @@ export default forwardRef<SettingPopupType, SettingPopupProps>(({ direction, ...
               <SettingPlaybackRate />
               <SettingLrcFontSize direction={direction} />
               <SettingLrcAlign />
+              <SettingLyricFontWeight />
+              <SettingLyricLineSpacing />
             </View>
           </ScrollView>
         </Popup>
