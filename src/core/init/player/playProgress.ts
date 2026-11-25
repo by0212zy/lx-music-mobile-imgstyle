@@ -32,15 +32,19 @@ export default () => {
   const getCurrentTime = () => {
     let id = playerState.musicInfo.id
     void getPosition().then(position => {
-      if (!position || id != playerState.musicInfo.id) return
+      // 允许 position 为 0，否则刚播放时无法立即跳过片头，会延迟一轮轮询（约 1 秒）
+      if (position == null || id != playerState.musicInfo.id) return
 
       // 图片样式版：跳过片头 / 片尾
       const skipIntro = settingState.setting['playDetail.skipIntro'] ?? 0
       const skipOutro = settingState.setting['playDetail.skipOutro'] ?? 0
-      if (skipIntro > 0 && introSkippedId !== id && position < skipIntro) {
-        introSkippedId = id
+      if (skipIntro > 0 && position < skipIntro) {
+        // 片头：首次触发真实 seek，之后仅钳制显示进度，避免 seek 尚未生效时进度回跳到开头
+        if (introSkippedId !== id) {
+          introSkippedId = id
+          void setCurrentTime(skipIntro)
+        }
         setNowPlayTime(skipIntro)
-        void setCurrentTime(skipIntro)
         return
       }
       if (skipOutro > 0 && outroSkippedId !== id) {
@@ -106,8 +110,14 @@ export default () => {
 
   const handlePlay = () => {
     void getMaxTime()
-    // prevProgressStatus = 'normal'
-    // handleSetTaskBarState(playProgress.progress, prevProgressStatus)
+    // 图片样式版：播放开始/恢复时立即跳过片头，不等轮询，消除开头 1-2 秒延迟
+    const skipIntro = settingState.setting['playDetail.skipIntro'] ?? 0
+    const id = playerState.musicInfo.id
+    if (skipIntro > 0 && introSkippedId !== id && playerState.progress.nowPlayTime < skipIntro) {
+      introSkippedId = id
+      setNowPlayTime(skipIntro)
+      void setCurrentTime(skipIntro)
+    }
     startUpdateTimeout()
   }
   const handlePause = () => {

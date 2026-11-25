@@ -1,17 +1,16 @@
-import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { memo, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { TouchableOpacity, View } from 'react-native'
 
 import Text from '@/components/common/Text'
 import { Icon } from '@/components/common/Icon'
-import { usePlayerMusicInfo } from '@/store/player/hook'
+import MusicAddModal, { type MusicAddModalType } from '@/components/MusicAddModal'
 import { useSettingValue } from '@/store/setting/hook'
 import { useI18n } from '@/lang'
-import { collectMusic, uncollectMusic } from '@/core/player/player'
-import { getListMusics } from '@/core/list'
-import { MUSIC_TOGGLE_MODE_LIST, MUSIC_TOGGLE_MODE, LIST_IDS } from '@/config/constant'
+import { MUSIC_TOGGLE_MODE_LIST, MUSIC_TOGGLE_MODE } from '@/config/constant'
 import { updateSetting } from '@/core/common'
 import { navigations } from '@/navigation'
 import commonState from '@/store/common/state'
+import playerState from '@/store/player/state'
 import { createStyle, toast } from '@/utils/tools'
 
 export const MoreItem = memo(({ children, label, onPress }: {
@@ -26,42 +25,26 @@ export const MoreItem = memo(({ children, label, onPress }: {
 ))
 
 export const CollectItem = memo(() => {
-  const musicInfo = usePlayerMusicInfo()
-  const t = useI18n()
-  const [collected, setCollected] = useState(false)
+  const musicAddModalRef = useRef<MusicAddModalType>(null)
 
-  const musicId = ((musicInfo as unknown as { metadata?: { musicInfo: LX.Music.MusicInfo } }).metadata?.musicInfo?.id ?? musicInfo.id)
-
-  useEffect(() => {
-    let mounted = true
-    const load = () => {
-      void getListMusics(LIST_IDS.LOVE).then(list => {
-        if (mounted) setCollected(list.some(m => m.id === musicId))
-      })
-    }
-    load()
-    global.app_event.on('myListMusicUpdate', load)
-    return () => {
-      mounted = false
-      global.app_event.off('myListMusicUpdate', load)
-    }
-  }, [musicId])
-
+  // 复用原有收藏功能：打开「添加到歌单」弹窗，由用户选择收藏到哪个歌单
   const handlePress = useCallback(() => {
-    if (collected) {
-      uncollectMusic()
-      toast('已取消收藏')
-    } else {
-      collectMusic()
-      toast(t('collect_success'))
-    }
-    setCollected(!collected)
-  }, [collected, t])
+    const musicInfo = playerState.playMusicInfo.musicInfo
+    if (!musicInfo) return
+    musicAddModalRef.current?.show({
+      musicInfo: 'progress' in musicInfo ? musicInfo.metadata.musicInfo : musicInfo,
+      isMove: false,
+      listId: playerState.playMusicInfo.listId!,
+    })
+  }, [])
 
   return (
-    <MoreItem label="收藏" onPress={handlePress}>
-      <Icon name="love" color={collected ? '#FFB300' : '#D8D3E8'} size={18} />
-    </MoreItem>
+    <>
+      <MoreItem label="收藏" onPress={handlePress}>
+        <Icon name="love" color="#D8D3E8" size={18} />
+      </MoreItem>
+      <MusicAddModal ref={musicAddModalRef} />
+    </>
   )
 })
 

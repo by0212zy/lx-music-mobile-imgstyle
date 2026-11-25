@@ -1,5 +1,5 @@
 import { forwardRef, useImperativeHandle, useRef, useState } from 'react'
-import { View, TouchableOpacity } from 'react-native'
+import { View } from 'react-native'
 
 import ConfirmAlert, { type ConfirmAlertType } from '@/components/common/ConfirmAlert'
 import Text from '@/components/common/Text'
@@ -7,37 +7,51 @@ import { useTheme } from '@/store/theme/hook'
 import { useSettingValue } from '@/store/setting/hook'
 import { updateSetting } from '@/core/common'
 import { createStyle } from '@/utils/tools'
-
-const PRESETS = [0, 15, 30, 45, 60, 90, 120, 180]
+import Slider, { type SliderProps } from '@/components/common/Slider'
 
 export interface SkipIntroOutroModalType {
   show: () => void
 }
 
-const SkipRow = ({ label, value, settingKey }: {
+const MAX_SKIP = 180
+
+const SkipSliderRow = ({ label, settingKey }: {
   label: string
-  value: number
   settingKey: 'playDetail.skipIntro' | 'playDetail.skipOutro'
 }) => {
   const theme = useTheme()
+  const value = useSettingValue(settingKey) ?? 0
+  const [sliderValue, setSliderValue] = useState(value)
+  const [isSliding, setSliding] = useState(false)
+
+  const handleSlidingStart: SliderProps['onSlidingStart'] = () => {
+    setSliding(true)
+  }
+  const handleValueChange: SliderProps['onValueChange'] = v => {
+    setSliderValue(v)
+  }
+  const handleSlidingComplete: SliderProps['onSlidingComplete'] = v => {
+    setSliding(false)
+    if (value === v) return
+    updateSetting({ [settingKey]: v })
+  }
+
   return (
     <View style={styles.row}>
-      <Text size={14} color={theme['c-font-label']}>{label}（{value} 秒）</Text>
-      <View style={styles.presets}>
-        {PRESETS.map(second => (
-          <TouchableOpacity
-            key={second}
-            activeOpacity={0.6}
-            style={{
-              ...styles.chip,
-              backgroundColor: value === second ? theme['c-primary'] : 'rgba(128,128,128,0.18)',
-            }}
-            onPress={() => { updateSetting({ [settingKey]: second }) }}
-          >
-            <Text size={12} color={value === second ? '#FFFFFF' : theme['c-font']}>{second === 0 ? '不跳过' : `${second}s`}</Text>
-          </TouchableOpacity>
-        ))}
+      <View style={styles.rowHeader}>
+        <Text size={14} color={theme['c-font-label']}>{label}</Text>
+        <Text size={14} color={theme['c-primary']}>{isSliding ? sliderValue : value} 秒</Text>
       </View>
+      <Slider
+        minimumValue={0}
+        maximumValue={MAX_SKIP}
+        step={1}
+        value={value}
+        onSlidingStart={handleSlidingStart}
+        onValueChange={handleValueChange}
+        onSlidingComplete={handleSlidingComplete}
+      />
+      <Text size={11} color={theme['c-font-label']}>0 秒为不跳过，可滑动到 {MAX_SKIP} 秒</Text>
     </View>
   )
 }
@@ -45,8 +59,6 @@ const SkipRow = ({ label, value, settingKey }: {
 export default forwardRef<SkipIntroOutroModalType>((_props, ref) => {
   const alertRef = useRef<ConfirmAlertType>(null)
   const [visible, setVisible] = useState(false)
-  const skipIntro = useSettingValue('playDetail.skipIntro') ?? 0
-  const skipOutro = useSettingValue('playDetail.skipOutro') ?? 0
 
   useImperativeHandle(ref, () => ({
     show() {
@@ -73,8 +85,8 @@ export default forwardRef<SkipIntroOutroModalType>((_props, ref) => {
     >
       <View style={styles.container}>
         <Text size={12} color="#8E86A8">播放时自动跳到片头之后，并在剩余时间到达片尾时长时切换下一首。</Text>
-        <SkipRow label="跳过片头" value={skipIntro} settingKey="playDetail.skipIntro" />
-        <SkipRow label="跳过片尾" value={skipOutro} settingKey="playDetail.skipOutro" />
+        <SkipSliderRow label="跳过片头" settingKey="playDetail.skipIntro" />
+        <SkipSliderRow label="跳过片尾" settingKey="playDetail.skipOutro" />
       </View>
     </ConfirmAlert>
   )
@@ -85,18 +97,12 @@ const styles = createStyle({
     flexDirection: 'column',
   },
   row: {
-    marginTop: 14,
+    marginTop: 16,
   },
-  presets: {
+  rowHeader: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 8,
-  },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    marginRight: 6,
-    marginBottom: 6,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
   },
 })

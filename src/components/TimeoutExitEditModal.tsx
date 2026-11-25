@@ -182,6 +182,15 @@ export default forwardRef<TimeoutExitEditModalType, TimeoutExitEditModalProps>((
     stopTimeoutExit()
     toast(t('timeout_exit_tip_cancel'))
   }
+  // 应用定时：点击预设或确定都直接生效并关闭弹窗
+  const applyTime = (time: number) => {
+    cancelTimeoutExit()
+    startTimeoutExit(time * 60)
+    toast(t('timeout_exit_tip_on', { time: formatTime(getTimeoutExitTime()) }))
+    updateSetting({ 'player.timeoutExit': String(time) })
+    alertRef.current?.setVisible(false)
+  }
+
   const handleConfirm = () => {
     let timeStr = timeInputRef.current?.getText() ?? ''
     if (rxp.test(timeStr)) {
@@ -197,12 +206,7 @@ export default forwardRef<TimeoutExitEditModalType, TimeoutExitEditModalProps>((
       timeStr = ''
     }
     if (!timeStr) return
-    const time = parseInt(timeStr)
-    cancelTimeoutExit()
-    startTimeoutExit(time * 60)
-    toast(t('timeout_exit_tip_on', { time: formatTime(getTimeoutExitTime()) }))
-    updateSetting({ 'player.timeoutExit': String(time) })
-    alertRef.current?.setVisible(false)
+    applyTime(parseInt(timeStr))
   }
 
   return (
@@ -222,9 +226,9 @@ export default forwardRef<TimeoutExitEditModalType, TimeoutExitEditModalProps>((
                   key={min}
                   activeOpacity={0.6}
                   style={styles.presetChip}
-                  onPress={() => timeInputRef.current?.setText(String(min))}
+                  onPress={() => { applyTime(min) }}
                 >
-                  <Text size={12} color={theme['c-font']}>{min} 分钟</Text>
+                  <Text size={13} color={theme['c-font']}>{min} 分钟</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -254,12 +258,15 @@ const styles = createStyle({
     marginBottom: 4,
   },
   presetChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    marginRight: 6,
-    marginBottom: 6,
-    backgroundColor: 'rgba(128,128,128,0.18)',
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 10,
+    marginRight: 8,
+    marginBottom: 8,
+    minWidth: 76,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(128,128,128,0.22)',
   },
   checkbox: {
     marginTop: 5,

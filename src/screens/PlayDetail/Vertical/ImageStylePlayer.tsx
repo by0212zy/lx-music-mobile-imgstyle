@@ -99,6 +99,10 @@ export default memo(({ componentId }: { componentId: string }) => {
             <Text size={12} color="#FFFFFF">正在播放</Text>
           </View>
           <View style={styles.headerSpacer} />
+          <TouchableOpacity style={styles.gainBtn} activeOpacity={0.6} onPress={() => settingPopupRef.current?.show()}>
+            <Icon name="setting" color="#FFFFFF" size={16} />
+            <Text size={12} color="#FFFFFF" style={styles.gainBtnText}>设置</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.headerRoundBtn} activeOpacity={0.6} onPress={handleShare}>
             <Icon name="share" color="#FFFFFF" size={18} />
           </TouchableOpacity>
@@ -142,13 +146,15 @@ export default memo(({ componentId }: { componentId: string }) => {
       <View style={styles.progressSection}>
         <View style={styles.progressRow}>
           <TouchableOpacity style={styles.seekBtn} activeOpacity={0.6} onPress={() => { seek(-15) }}>
-            <Icon name="music_time" color="#B9B2CC" size={22} />
+            <Icon name="chevron-left-2" color="#B9B2CC" size={20} />
+            <Text size={10} color="#B9B2CC" style={styles.seekBtnLabel}>15</Text>
           </TouchableOpacity>
           <View style={styles.progressWrap}>
             <ProgressBar progress={progress} duration={maxPlayTime} buffered={buffered} />
           </View>
           <TouchableOpacity style={styles.seekBtn} activeOpacity={0.6} onPress={() => { seek(15) }}>
-            <Icon name="music_time" color="#B9B2CC" size={22} />
+            <Icon name="chevron-right-2" color="#B9B2CC" size={20} />
+            <Text size={10} color="#B9B2CC" style={styles.seekBtnLabel}>15</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.timeRow}>
@@ -227,11 +233,17 @@ const styles = createStyle({
     flex: 1,
   },
   gainBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 8,
     borderRadius: 10,
     backgroundColor: 'rgba(255,255,255,0.06)',
     marginRight: 8,
+  },
+  gainBtnText: {
+    fontWeight: '500',
   },
   discArea: {
     flex: 1,
@@ -295,6 +307,10 @@ const styles = createStyle({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
+  },
+  seekBtnLabel: {
+    marginTop: -3,
+    fontWeight: '700',
   },
   progressWrap: {
     flex: 1,

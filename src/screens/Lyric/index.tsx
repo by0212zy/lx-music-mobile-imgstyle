@@ -1,6 +1,10 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, TouchableOpacity, StatusBar as RNStatusBar, type LayoutChangeEvent } from 'react-native'
-import PagerView, { type PagerViewOnPageSelectedEvent } from 'react-native-pager-view'
+import PagerView, {
+  type PagerViewOnPageSelectedEvent,
+  type PagerViewOnPageScrollEvent,
+  type PageScrollStateChangedNativeEvent,
+} from 'react-native-pager-view'
 
 import PageContent from '@/components/PageContent'
 import Text from '@/components/common/Text'
@@ -10,7 +14,7 @@ import { useSettingValue } from '@/store/setting/hook'
 import { usePlayerMusicInfo, useIsPlay } from '@/store/player/hook'
 import { useWindowSize } from '@/utils/hooks'
 import { type Line, useLrcPlay, useLrcSet } from '@/plugins/lyric'
-import { togglePlay } from '@/core/player/player'
+import { playNext, playPrev, togglePlay } from '@/core/player/player'
 import { pop } from '@/navigation'
 import { createStyle } from '@/utils/tools'
 
@@ -31,11 +35,15 @@ export default memo(({ componentId }: { componentId: string }) => {
   const statusBarHeight = useStatusbarHeight()
   const fontWeight = useSettingValue('playDetail.lyricFontWeight') ?? 800
   const lineSpacing = useSettingValue('playDetail.lyricLineSpacing') ?? 10
+  // 字号设置生效：设置项单位为 0.1px（默认 210 = 21px）
+  const lrcFontSize = useSettingValue('playDetail.vertical.style.lrcFontSize') ?? 210
+  const fontSize = lrcFontSize / 10
 
-  // 实际可用高度由布局测量得到，行数随屏幕与行间距自适应，避免底部空白
+  // 实际可用高度由布局测量得到，行数随屏幕、字号与行间距自适应，避免底部空白
   const [contentHeight, setContentHeight] = useState(Math.max(240, height - statusBarHeight - 58 - 132))
-  const lineHeight = 46 + lineSpacing
-  const linesPerPage = clamp(Math.floor(contentHeight / lineHeight), 3, 30)
+  // 基础行高随字号缩放；行间距为 0 时更紧凑
+  const lineHeight = Math.max(26, Math.round(fontSize * 1.3) + lineSpacing)
+  const linesPerPage = clamp(Math.floor(contentHeight / lineHeight), 3, 40)
 
   const handlePagerLayout = useCallback(({ nativeEvent }: LayoutChangeEvent) => {
     const nextHeight = nativeEvent.layout.height
@@ -62,7 +70,25 @@ export default memo(({ componentId }: { componentId: string }) => {
   const programmaticRef = useRef(false)
   const firstPageEventRef = useRef(true)
   const syncModeRef = useRef(true)
+  // 翻页动画锁：快速连续点击时忽略后续请求，避免来回乱跳
+  const navLockRef = useRef(false)
+  const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 越界拖动检测：最后一页继续下滑切下一首，第一页继续上滑切上一首
+  const overDragRef = useRef(0)
+  const scrollStateRef = useRef('idle')
   const [page, setPage] = useState(pageRef.current)
+
+  const lockNav = useCallback(() => {
+    navLockRef.current = true
+    if (navTimerRef.current) clearTimeout(navTimerRef.current)
+    navTimerRef.current = setTimeout(() => {
+      navLockRef.current = false
+    }, 450)
+  }, [])
+
+  useEffect(() => () => {
+    if (navTimerRef.current) clearTimeout(navTimerRef.current)
+  }, [])
   const [selectedLine, setSelectedLine] = useState<number | null>(null)
 
   const highlightLine = selectedLine ?? (playLine >= 0 ? playLine : 0)
@@ -90,9 +116,35 @@ export default memo(({ componentId }: { componentId: string }) => {
     }
   }, [])
 
-  // 播放进度变化时自动翻页（仅在同步模式下）
+  // 用户左右滑动到边界继续拖动时切歌
+  const handlePageScroll = useCallback(({ nativeEvent }: PagerViewOnPageScrollEvent) => {
+    const lastPage = pages.length - 1
+    if (nativeEvent.position === lastPage && nativeEvent.offset > 0.15) {
+      overDragRef.current = 1
+    } else if (nativeEvent.position === 0 && nativeEvent.offset < -0.15) {
+      overDragRef.current = -1
+    }
+  }, [pages.length])
+
+  const handlePageScrollStateChanged = useCallback(({ nativeEvent }: PageScrollStateChangedNativeEvent) => {
+    scrollStateRef.current = nativeEvent.pageScrollState
+    // 每次开始新拖拽时清空旧标记，避免切歌后残留状态误触发
+    if (nativeEvent.pageScrollState === 'dragging') {
+      overDragRef.current = 0
+      return
+    }
+    if (nativeEvent.pageScrollState !== 'idle' || overDragRef.current === 0) return
+    const dir = overDragRef.current
+    overDragRef.current = 0
+    if (navLockRef.current) return
+    lockNav()
+    if (dir > 0) void playNext()
+    else void playPrev()
+  }, [lockNav])
+
+  // 播放进度变化时自动翻页（仅在同步模式下，且手动翻页动画期间不打扰）
   useEffect(() => {
-    if (!syncModeRef.current) return
+    if (!syncModeRef.current || navLockRef.current) return
     const target = clamp(Math.floor(Math.max(playLine, 0) / linesPerPage), 0, pages.length - 1)
     if (target === pageRef.current) return
     programmaticRef.current = true
@@ -125,10 +177,20 @@ export default memo(({ componentId }: { componentId: string }) => {
     global.app_event.setProgress(time / 1000)
   }, [lyricLines])
 
-  // 2. 底部按钮翻页 -> 同步播放进度
+  // 2. 底部按钮翻页 -> 同步播放进度；在边界继续翻则切歌
   const goPage = useCallback((delta: number) => {
-    const target = clamp(pageRef.current + delta, 0, pages.length - 1)
+    if (navLockRef.current) return
+    const lastPage = pages.length - 1
+    // 边界继续翻：下一首 / 上一首
+    if ((delta > 0 && pageRef.current >= lastPage) || (delta < 0 && pageRef.current <= 0)) {
+      lockNav()
+      if (delta > 0) void playNext()
+      else void playPrev()
+      return
+    }
+    const target = clamp(pageRef.current + delta, 0, lastPage)
     if (target === pageRef.current) return
+    lockNav()
     syncModeRef.current = true
     setSelectedLine(null)
     programmaticRef.current = true
@@ -137,7 +199,7 @@ export default memo(({ componentId }: { componentId: string }) => {
     pagerRef.current?.setPage(target)
     const lineIndex = clamp(pages[target].start, 0, lyricLines.length - 1)
     global.app_event.setProgress((lyricLines[lineIndex]?.time ?? 0) / 1000)
-  }, [pages, lyricLines])
+  }, [pages, lyricLines, lockNav])
 
   // 播放/暂停时重新定位到当前播放歌词行
   const handleTogglePlay = useCallback(() => {
@@ -159,14 +221,14 @@ export default memo(({ componentId }: { componentId: string }) => {
             const active = index === highlightLine
             return (
               <TouchableOpacity
-                style={{ ...styles.lineRow, height: lineHeight }}
+                style={{ ...styles.lineRow, minHeight: lineHeight }}
                 activeOpacity={0.7}
                 key={index}
                 onPress={() => { handleLinePress(index) }}
               >
                 <View style={active ? styles.activeBar : styles.inactiveBar} />
                 <Text
-                  size={19}
+                  size={fontSize}
                   numberOfLines={2}
                   style={{
                     ...styles.lineText,
@@ -205,7 +267,10 @@ export default memo(({ componentId }: { componentId: string }) => {
           ref={pagerRef}
           initialPage={pageRef.current}
           onPageSelected={handlePageSelected}
+          onPageScroll={handlePageScroll}
+          onPageScrollStateChanged={handlePageScrollStateChanged}
           onLayout={handlePagerLayout}
+          overdrag
           style={styles.pager}
         >
           {pages.map(renderPage)}
@@ -279,6 +344,7 @@ const styles = createStyle({
   lineRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 2,
   },
   activeBar: {
     width: 3,
