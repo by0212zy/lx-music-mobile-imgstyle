@@ -55,6 +55,7 @@ export default memo(({ componentId }: { componentId: string }) => {
   const pagerRef = useRef<PagerView>(null)
   const pageRef = useRef(clamp(Math.floor(Math.max(playLine, 0) / linesPerPage), 0, pages.length - 1))
   const programmaticRef = useRef(false)
+  const firstPageEventRef = useRef(true)
   const syncModeRef = useRef(true)
   const [page, setPage] = useState(pageRef.current)
   const [selectedLine, setSelectedLine] = useState<number | null>(null)
@@ -70,6 +71,12 @@ export default memo(({ componentId }: { componentId: string }) => {
     pageRef.current = position
     setPage(position)
     setSelectedLine(null)
+    if (firstPageEventRef.current) {
+      // 初始化时的回调，不视为用户滑动
+      firstPageEventRef.current = false
+      programmaticRef.current = false
+      return
+    }
     if (programmaticRef.current) {
       programmaticRef.current = false
     } else {
@@ -96,6 +103,7 @@ export default memo(({ componentId }: { componentId: string }) => {
     const target = clamp(Math.floor(Math.max(playLine, 0) / linesPerPage), 0, pages.length - 1)
     pageRef.current = target
     setPage(target)
+    programmaticRef.current = true
     pagerRef.current?.setPage(target)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lyricLines])
