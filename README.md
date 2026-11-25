@@ -115,3 +115,30 @@
 ---
 
 若对此有疑问请 mail to: lyswhut+qq.com (请将 `+` 替换成 `@`)
+
+---
+
+## 图片样式版说明（本分支）
+
+本仓库基于 [lyswhut/lx-music-mobile](https://github.com/lyswhut/lx-music-mobile) 改造，仅修改 UI 表现，不改音乐源与播放核心：
+
+- **播放页**：黑紫背景 + 唱片式旋转封面 + 蓝色主播放按钮，按参考图重排标题、进度、功能按钮。
+  - 左下角音符/书本按钮进入**独立歌词阅读页**；右下角按钮打开设置。
+- **独立歌词页**（`src/screens/Lyric`）：
+  1. 点击歌词文字 → 跳转到该行播放进度。
+  2. 底部左右按钮翻页 → 同步跳转播放进度。
+  3. 左右滑动翻页 → **不**改变播放进度；此时暂停自动跟随，点击歌词或按底部按钮恢复同步。
+  4. 歌词字体加粗，当前行高亮为橙色。
+- 应用名为 `LX Music 图片版`，包名 `cn.toside.music.mobile.imgstyle`，可与原版共存。
+
+### 同步上游更新
+
+```bash
+git fetch upstream
+git merge upstream/master   # 上游默认分支为 master
+# 解决冲突后 push 到本仓库 main
+```
+
+### 自动打包
+
+`.github/workflows/imgstyle-build.yml` 在推送到 `main` 或手动触发时构建 Release APK（使用 debug 签名，无需密钥），构建产物在 Actions 的 Artifacts 中，也会发布到 Releases。
