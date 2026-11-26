@@ -69,9 +69,6 @@ export default memo(({ componentId }: { componentId: string }) => {
           <TouchableOpacity style={styles.headerRoundBtn} activeOpacity={0.6} onPress={handleBack}>
             <Icon name="chevron-left" color="#FFFFFF" size={20} />
           </TouchableOpacity>
-          <View style={styles.playingBadge}>
-            <Text size={12} color="#FFFFFF">正在播放</Text>
-          </View>
           <View style={styles.headerSpacer} />
           <TouchableOpacity style={styles.gainBtn} activeOpacity={0.6} onPress={() => settingPopupRef.current?.show()}>
             <Icon name="setting" color="#FFFFFF" size={16} />
@@ -109,9 +106,6 @@ export default memo(({ componentId }: { componentId: string }) => {
       </TouchableOpacity>
 
       <View style={styles.trackInfo}>
-        <View style={styles.episodeBadge}>
-          <Text size={11} color="#FFFFFF">正在播放</Text>
-        </View>
         <Text size={21} color="#FFFFFF" numberOfLines={2} style={styles.trackName}>{musicInfo.name}</Text>
         <Text size={12} color="#A9A2C0" numberOfLines={1}>{subtitle}</Text>
       </View>
@@ -195,13 +189,6 @@ const styles = createStyle({
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
-  playingBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 10,
-    backgroundColor: '#5B8DEF',
-    marginLeft: 12,
-  },
   headerSpacer: {
     flex: 1,
   },
@@ -249,13 +236,6 @@ const styles = createStyle({
     alignItems: 'center',
     paddingHorizontal: 24,
     paddingBottom: 6,
-  },
-  episodeBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
-    backgroundColor: '#5B8DEF',
-    marginBottom: 8,
   },
   trackName: {
     fontWeight: '700',
