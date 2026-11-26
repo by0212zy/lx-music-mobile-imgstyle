@@ -27,8 +27,8 @@ const SENTINEL = 1
 const NAV_LOCK_MS = 450
 // 用户拖拽后多久内的 pageSelected 视为真实手势；程序 setPage 不产生 dragging
 const USER_DRAG_WINDOW = 1200
-// 切歌等待新歌词就绪的最长时间（超时后用兜底定位）
-const SWITCH_WAIT_MS = 2000
+// 切歌等待新歌词就绪的最长时间（超时后兜底定位到首页，绝不用旧歌词分页）
+const SWITCH_WAIT_MS = 5000
 
 interface SlideLine {
   index: number
@@ -77,32 +77,39 @@ export default memo(({ componentId }: { componentId: string }) => {
 
   const realPages = useMemo(() => {
     if (!lyricLines.length) return [{ start: 0, lines: [] }]
-    // 先算每行高度，再按总高度均分成 N 页，避免「塞满一页再换页」造成末页留白过多
+    // 估算折行：中文/全角按 1 个字宽，英文/数字/半角按 0.55 个字宽，
+    // 比单纯按字符数更接近真实换行，减少各页实际高度与估算高度的偏差。
+    const measureWidth = (text: string) => {
+      let w = 0
+      for (const ch of text) w += ch.charCodeAt(0) < 0x2e80 ? 0.55 : 1
+      return w
+    }
     const rows = lyricLines.map((line, i) => {
       const text = line?.text ?? ''
-      const visualLines = Math.max(1, Math.ceil(text.length / charsPerLine))
+      const visualLines = Math.max(1, Math.ceil(measureWidth(text) / charsPerLine))
       return { index: i, text, visualLines, height: visualLines * textLineHeight + rowGap }
     })
     const totalHeight = rows.reduce((sum, row) => sum + row.height, 0)
-    const pageCount = Math.max(1, Math.ceil(totalHeight / Math.max(1, maxContentHeight)))
-    const targetHeight = totalHeight / pageCount
+    const cap = Math.max(1, maxContentHeight)
+    const pageCount = Math.max(1, Math.ceil(totalHeight / cap))
 
+    // 按高度均分：每页的目标内容高度 = 总高度 / 页数，逐行累加到该目标即换页
+    // （每页至少一行，末页收下剩余）。这样每页内容高度接近、底部留白均匀。
+    const targetPerPage = totalHeight / pageCount
     const result: Array<{ start: number, lines: SlideLine[] }> = []
-    let current: { start: number, lines: SlideLine[] } | null = null
-    let usedHeight = 0
-    for (const row of rows) {
-      // 当前页已有内容且再加一行会明显超过目标高度时换页，使各页内容高度接近
-      if (current?.lines.length && usedHeight + row.height > targetHeight) {
-        current = null
-        usedHeight = 0
+    let i = 0
+    for (let p = 0; p < pageCount && i < rows.length; p++) {
+      const page: { start: number, lines: SlideLine[] } = { start: rows[i].index, lines: [] }
+      let used = 0
+      while (i < rows.length) {
+        const row = rows[i]
+        // 非末页：已放内容且本页高度达到平均目标则换页；末页收下全部剩余行
+        if (page.lines.length && p < pageCount - 1 && used >= targetPerPage) break
+        page.lines.push({ index: row.index, text: row.text, visualLines: row.visualLines })
+        used += row.height
+        i++
       }
-      if (!current) {
-        current = { start: row.index, lines: [] }
-        result.push(current)
-        usedHeight = 0
-      }
-      current.lines.push({ index: row.index, text: row.text, visualLines: row.visualLines })
-      usedHeight += row.height
+      result.push(page)
     }
     if (!result.length) result.push({ start: 0, lines: [] })
     return result
@@ -241,10 +248,19 @@ export default memo(({ componentId }: { componentId: string }) => {
     if (!sw) return
     // playPrev/playNext 异步：musicId 尚未变化时等待
     if (musicInfo.id === sw.fromMusicId) return
-    // 歌词异步：等待换成新引用且有内容；无歌词歌曲靠超时兜底
-    const lyricReady = (lyricLines !== sw.baseLines && lyricLines.length > 0) || Date.now() - sw.startedAt > SWITCH_WAIT_MS
-    if (!lyricReady) return
 
+    // 关键：歌词是异步加载的（网络延迟）。切歌时序：
+    //   1) setMusicInfo(id=新歌, lrc=null)     —— musicInfo.id 立即变，lrc 被清空
+    //   2) musicToggled -> stop() -> lyricLines 变空数组
+    //   3) getLyricInfo().then -> setMusicInfo(lrc=歌词) + lyricUpdated -> lyricLines 变新引用
+    // 若在步骤 3 之前就用「空歌词」的 realPageCount 定位，prev 会落到首页而非末页。
+    // 因此用 musicInfo.lrc 由 null 变为字符串（含空串=无歌词）作为「歌词加载完成」的可靠信号。
+    const lyricFilled = musicInfo.lrc != null
+    const linesRefreshed = lyricLines !== sw.baseLines
+    const timedOut = Date.now() - sw.startedAt > SWITCH_WAIT_MS
+    if ((!lyricFilled || !linesRefreshed) && !timedOut) return
+
+    // 此刻 realPages/realPageCount 已基于新歌歌词计算；prev 定位末页，next 定位首页
     const target = sw.dir === 'prev' ? Math.max(0, realPageCount - 1) : 0
     if (sw.dir === 'prev') {
       const lineIndex = clamp(realPages[target]?.start ?? 0, 0, Math.max(0, lyricLines.length - 1))
@@ -260,7 +276,7 @@ export default memo(({ componentId }: { componentId: string }) => {
     setPage(target)
     setInitialPage(target + SENTINEL)
     setPagerKey(k => k + 1)
-  }, [musicInfo.id, lyricLines, realPageCount, realPages])
+  }, [musicInfo.id, musicInfo.lrc, lyricLines, realPageCount, realPages])
 
   useEffect(() => {
     if (selectedLine != null && selectedLine === playLine) setSelectedLine(null)
@@ -346,10 +362,9 @@ export default memo(({ componentId }: { componentId: string }) => {
             <TouchableOpacity style={styles.closeBtn} activeOpacity={0.6} onPress={close}>
               <Icon name="close" color="#FFFFFF" size={20} />
             </TouchableOpacity>
-            <View style={styles.headerSpacer} />
             <View style={styles.headerTitle}>
-              <Text size={15} color="#FFFFFF" numberOfLines={1}>{musicInfo.name}</Text>
-              <Text size={11} color="#9E96B5" numberOfLines={1}>{musicInfo.singer}</Text>
+              <Text size={15} color="#FFFFFF" numberOfLines={1} style={styles.headerTitleText}>{musicInfo.name}</Text>
+              <Text size={11} color="#9E96B5" numberOfLines={1} style={styles.headerTitleText}>{musicInfo.singer}</Text>
             </View>
           </View>
         </View>
@@ -404,22 +419,28 @@ const styles = createStyle({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    gap: 10,
+    position: 'relative',
+    justifyContent: 'center',
   },
   closeBtn: {
+    position: 'absolute',
+    left: 16,
     width: 38,
     height: 38,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-  headerSpacer: {
-    width: 38,
+    zIndex: 1,
   },
   headerTitle: {
-    flex: 1,
+    width: '100%',
+    paddingHorizontal: 64,
+    alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerTitleText: {
+    textAlign: 'center',
   },
   pager: {
     flex: 1,
