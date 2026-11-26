@@ -75,42 +75,21 @@ export default memo(() => {
   }, [contentHeight])
 
   const realPages = useMemo(() => {
-    if (!lyricLines.length) return [{ start: 0, lines: [] }]
-    // 估算折行：中文/全角按 1 个字宽，英文/数字/半角按 0.55 个字宽，并留出 1 字余量，
-    // 避免低估折行数导致实际渲染高度与估算高度偏差过大、各页底部留白不均。
-    const measureWidth = (text: string) => {
-      let w = 0
-      for (const ch of text) w += ch.charCodeAt(0) < 0x2e80 ? 0.55 : 1
-      return w
-    }
-    const charsPerLineSafe = Math.max(4, charsPerLine - 1)
-    const rows = lyricLines.map((line, i) => {
-      const text = line?.text ?? ''
-      const visualLines = Math.max(1, Math.ceil(measureWidth(text) / charsPerLineSafe))
-      return { index: i, text, visualLines, height: visualLines * textLineHeight + rowGap }
-    })
-    const totalHeight = rows.reduce((sum, row) => sum + row.height, 0)
-    const cap = Math.max(1, maxContentHeight)
-    const pageCount = Math.max(1, Math.ceil(totalHeight / cap))
-
-    // 按累计高度边界均分：第 k 页的边界 = k * 总高度/页数，累计高度到边界即换页。
-    // 边界是绝对累计值（不会因换页重置），各页内容高度接近、底部留白均匀，末页也不会只剩一两句。
-    const targetPerPage = totalHeight / pageCount
     const result: Array<{ start: number, lines: SlideLine[] }> = []
-    let page: { start: number, lines: SlideLine[] } | null = null
-    let cumHeight = 0
-    let boundary = targetPerPage
-    for (const row of rows) {
-      if (!page) page = { start: row.index, lines: [] }
-      page.lines.push({ index: row.index, text: row.text, visualLines: row.visualLines })
-      cumHeight += row.height
-      if (result.length < pageCount - 1 && cumHeight >= boundary) {
-        result.push(page)
-        page = null
-        boundary += targetPerPage
+    let current: { start: number, lines: SlideLine[] } | null = null
+    let usedHeight = 0
+    for (let i = 0; i < lyricLines.length; i++) {
+      const text = lyricLines[i]?.text ?? ''
+      const visualLines = Math.max(1, Math.ceil(text.length / charsPerLine))
+      const rowHeight = visualLines * textLineHeight + rowGap
+      if (!current || usedHeight + rowHeight > maxContentHeight) {
+        current = { start: i, lines: [] }
+        result.push(current)
+        usedHeight = 0
       }
+      current.lines.push({ index: i, text, visualLines })
+      usedHeight += rowHeight
     }
-    if (page?.lines.length) result.push(page)
     if (!result.length) result.push({ start: 0, lines: [] })
     return result
   }, [lyricLines, maxContentHeight, charsPerLine, textLineHeight, rowGap])
