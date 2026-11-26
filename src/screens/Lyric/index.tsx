@@ -77,40 +77,41 @@ export default memo(({ componentId }: { componentId: string }) => {
 
   const realPages = useMemo(() => {
     if (!lyricLines.length) return [{ start: 0, lines: [] }]
-    // 估算折行：中文/全角按 1 个字宽，英文/数字/半角按 0.55 个字宽，
-    // 比单纯按字符数更接近真实换行，减少各页实际高度与估算高度的偏差。
+    // 估算折行：中文/全角按 1 个字宽，英文/数字/半角按 0.55 个字宽，并留出 1 字余量，
+    // 避免低估折行数导致实际渲染高度与估算高度偏差过大、各页底部留白不均。
     const measureWidth = (text: string) => {
       let w = 0
       for (const ch of text) w += ch.charCodeAt(0) < 0x2e80 ? 0.55 : 1
       return w
     }
+    const charsPerLineSafe = Math.max(4, charsPerLine - 1)
     const rows = lyricLines.map((line, i) => {
       const text = line?.text ?? ''
-      const visualLines = Math.max(1, Math.ceil(measureWidth(text) / charsPerLine))
+      const visualLines = Math.max(1, Math.ceil(measureWidth(text) / charsPerLineSafe))
       return { index: i, text, visualLines, height: visualLines * textLineHeight + rowGap }
     })
     const totalHeight = rows.reduce((sum, row) => sum + row.height, 0)
     const cap = Math.max(1, maxContentHeight)
     const pageCount = Math.max(1, Math.ceil(totalHeight / cap))
 
-    // 按高度均分：每页的目标内容高度 = 总高度 / 页数，逐行累加到该目标即换页
-    // （每页至少一行，末页收下剩余）。这样每页内容高度接近、底部留白均匀。
+    // 按累计高度边界均分：第 k 页的边界 = k * 总高度/页数，累计高度到边界即换页。
+    // 边界是绝对累计值（不会因换页重置），各页内容高度接近、底部留白均匀，末页也不会只剩一两句。
     const targetPerPage = totalHeight / pageCount
     const result: Array<{ start: number, lines: SlideLine[] }> = []
-    let i = 0
-    for (let p = 0; p < pageCount && i < rows.length; p++) {
-      const page: { start: number, lines: SlideLine[] } = { start: rows[i].index, lines: [] }
-      let used = 0
-      while (i < rows.length) {
-        const row = rows[i]
-        // 非末页：已放内容且本页高度达到平均目标则换页；末页收下全部剩余行
-        if (page.lines.length && p < pageCount - 1 && used >= targetPerPage) break
-        page.lines.push({ index: row.index, text: row.text, visualLines: row.visualLines })
-        used += row.height
-        i++
+    let page: { start: number, lines: SlideLine[] } | null = null
+    let cumHeight = 0
+    let boundary = targetPerPage
+    for (const row of rows) {
+      if (!page) page = { start: row.index, lines: [] }
+      page.lines.push({ index: row.index, text: row.text, visualLines: row.visualLines })
+      cumHeight += row.height
+      if (result.length < pageCount - 1 && cumHeight >= boundary) {
+        result.push(page)
+        page = null
+        boundary += targetPerPage
       }
-      result.push(page)
     }
+    if (page?.lines.length) result.push(page)
     if (!result.length) result.push({ start: 0, lines: [] })
     return result
   }, [lyricLines, maxContentHeight, charsPerLine, textLineHeight, rowGap])
