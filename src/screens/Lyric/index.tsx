@@ -14,7 +14,6 @@ import { usePlayerMusicInfo, useIsPlay } from '@/store/player/hook'
 import { useWindowSize } from '@/utils/hooks'
 import { useLrcPlay, useLrcSet } from '@/plugins/lyric'
 import { playNext, playPrev, togglePlay } from '@/core/player/player'
-import { pop } from '@/navigation'
 import { createStyle } from '@/utils/tools'
 
 // 图片样式：独立歌词阅读页
@@ -48,7 +47,7 @@ interface PendingSwitch {
   startedAt: number
 }
 
-export default memo(({ componentId }: { componentId: string }) => {
+export default memo(() => {
   const musicInfo = usePlayerMusicInfo()
   const isPlay = useIsPlay()
   const lyricLines = useLrcSet()
@@ -140,6 +139,9 @@ export default memo(({ componentId }: { componentId: string }) => {
   const navLockRef = useRef(false)
   const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingSwitchRef = useRef<PendingSwitch | null>(null)
+  // 切歌定位锚定：prev 切到末页后，播放进度往往被播放器归零（playLine=0），
+  // 若不锚定，自动跟随会把页面从末页拉回第一页。锚定直到播放进度追上锚定页或用户主动操作。
+  const anchorRef = useRef(false)
   const playLineRef = useRef(playLine)
   playLineRef.current = playLine
 
@@ -163,10 +165,6 @@ export default memo(({ componentId }: { componentId: string }) => {
   }, [])
 
   const highlightLine = selectedLine ?? (playLine >= 0 ? playLine : 0)
-
-  const close = useCallback(() => {
-    void pop(componentId)
-  }, [componentId])
 
   // 统一切歌请求：记录当前歌曲与歌词基线，等 musicId 变化后再定位
   const requestSwitch = useCallback((direction: 'prev' | 'next') => {
@@ -208,6 +206,7 @@ export default memo(({ componentId }: { componentId: string }) => {
     setPage(realPage)
     setSelectedLine(null)
     if (isUserDrag) {
+      anchorRef.current = false
       syncModeRef.current = realPage === pageForLine(playLineRef.current)
       dragAtRef.current = 0
     }
@@ -218,6 +217,12 @@ export default memo(({ componentId }: { componentId: string }) => {
     if (pendingSwitchRef.current) return
     if (navLockRef.current) return
     const target = pageForLine(playLine)
+    if (anchorRef.current) {
+      // 锚定中：只有播放进度真正推进到锚定页，才解除锚定恢复跟随；
+      // 否则忽略 playLine（切歌后它常被播放器重置为 0，在首页），页面稳稳停在锚定页。
+      if (target === pageRef.current) anchorRef.current = false
+      else return
+    }
     if (!syncModeRef.current) {
       if (target === pageRef.current) syncModeRef.current = true
       return
@@ -252,14 +257,15 @@ export default memo(({ componentId }: { componentId: string }) => {
 
     // 关键：歌词是异步加载的（网络延迟）。切歌时序：
     //   1) setMusicInfo(id=新歌, lrc=null)     —— musicInfo.id 立即变，lrc 被清空
-    //   2) musicToggled -> stop() -> lyricLines 变空数组
-    //   3) getLyricInfo().then -> setMusicInfo(lrc=歌词) + lyricUpdated -> lyricLines 变新引用
-    // 若在步骤 3 之前就用「空歌词」的 realPageCount 定位，prev 会落到首页而非末页。
-    // 因此用 musicInfo.lrc 由 null 变为字符串（含空串=无歌词）作为「歌词加载完成」的可靠信号。
-    const lyricFilled = musicInfo.lrc != null
+    //   2) musicToggled -> stop() -> lyricLines 被清空为 []（引用也变，但内容为空）
+    //   3) getLyricInfo().then -> setMusicInfo(lrc=歌词) + lyricUpdated -> lyricLines 变新歌词数组
+    // 若仅以 lrc != null 判断就绪，会出现「lrc 已变、lyricLines 仍是清空后的空数组」的中间态，
+    // 此时 realPageCount 只有 1 页，prev 会被误定位到首页。
+    // 因此要求歌词行真正到位（有内容），或明确无歌词（lrc === ''），再计算末页。
     const linesRefreshed = lyricLines !== sw.baseLines
+    const lyricReady = linesRefreshed && (lyricLines.length > 0 || musicInfo.lrc === '')
     const timedOut = Date.now() - sw.startedAt > SWITCH_WAIT_MS
-    if ((!lyricFilled || !linesRefreshed) && !timedOut) return
+    if (!lyricReady && !timedOut) return
 
     // 此刻 realPages/realPageCount 已基于新歌歌词计算；prev 定位末页，next 定位首页
     const target = sw.dir === 'prev' ? Math.max(0, realPageCount - 1) : 0
@@ -272,6 +278,10 @@ export default memo(({ componentId }: { componentId: string }) => {
     didInitRef.current = true
     syncModeRef.current = true
     dragAtRef.current = 0
+    // prev 定位到末页后必须锚定：切歌会把播放进度重置到开头，playLine 落在首页，
+    // 自动跟随会据此把页面拉回第一页。锚定后页面停在末页，直到进度追上或用户操作。
+    // next 定位首页与「从头播放」一致，无需锚定。
+    anchorRef.current = sw.dir === 'prev'
     setSelectedLine(null)
     pageRef.current = target
     setPage(target)
@@ -284,6 +294,7 @@ export default memo(({ componentId }: { componentId: string }) => {
   }, [playLine, selectedLine])
 
   const handleLinePress = useCallback((index: number) => {
+    anchorRef.current = false
     syncModeRef.current = true
     setSelectedLine(index)
     const time = lyricLines[index]?.time ?? 0
@@ -300,6 +311,7 @@ export default memo(({ componentId }: { componentId: string }) => {
     const target = clamp(pageRef.current + delta, 0, Math.max(0, realPageCount - 1))
     if (target === pageRef.current) return
     lockNav()
+    anchorRef.current = false
     syncModeRef.current = true
     setSelectedLine(null)
     pageRef.current = target
@@ -311,6 +323,7 @@ export default memo(({ componentId }: { componentId: string }) => {
 
   const handleTogglePlay = useCallback(() => {
     togglePlay()
+    anchorRef.current = false
     syncModeRef.current = true
     setSelectedLine(null)
     const target = clamp(pageForLine(playLine), 0, Math.max(0, realPageCount - 1))
@@ -360,9 +373,6 @@ export default memo(({ componentId }: { componentId: string }) => {
         <RNStatusBar barStyle="light-content" backgroundColor="transparent" translucent />
         <View style={{ paddingTop: statusBarHeight }}>
           <View style={styles.header}>
-            <TouchableOpacity style={styles.closeBtn} activeOpacity={0.6} onPress={close}>
-              <Icon name="close" color="#FFFFFF" size={20} />
-            </TouchableOpacity>
             <View style={styles.headerTitle}>
               <Text size={15} color="#FFFFFF" numberOfLines={1} style={styles.headerTitleText}>{musicInfo.name}</Text>
               <Text size={11} color="#9E96B5" numberOfLines={1} style={styles.headerTitleText}>{musicInfo.singer}</Text>
@@ -420,28 +430,13 @@ const styles = createStyle({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    position: 'relative',
-    justifyContent: 'center',
-  },
-  closeBtn: {
-    position: 'absolute',
-    left: 16,
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    zIndex: 1,
   },
   headerTitle: {
-    width: '100%',
-    paddingHorizontal: 64,
-    alignItems: 'center',
+    flex: 1,
     justifyContent: 'center',
   },
   headerTitleText: {
-    textAlign: 'center',
+    textAlign: 'left',
   },
   pager: {
     flex: 1,
