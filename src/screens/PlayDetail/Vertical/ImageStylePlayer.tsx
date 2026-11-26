@@ -1,5 +1,5 @@
-import { memo, useCallback, useEffect, useRef } from 'react'
-import { View, TouchableOpacity, Animated, Easing, StatusBar as RNStatusBar } from 'react-native'
+import { memo, useCallback, useRef } from 'react'
+import { View, TouchableOpacity, StatusBar as RNStatusBar } from 'react-native'
 
 import Image from '@/components/common/Image'
 import Text from '@/components/common/Text'
@@ -31,29 +31,10 @@ export default memo(({ componentId }: { componentId: string }) => {
   const settingPopupRef = useRef<SettingPopupType>(null)
   const timeoutModalRef = useRef<TimeoutExitEditModalType>(null)
   const skipModalRef = useRef<SkipIntroOutroModalType>(null)
-  const spinValue = useRef(new Animated.Value(0)).current
   const timeInfo = useTimeInfo()
   const playbackRate = useSettingValue('player.playbackRate')
 
-  useEffect(() => {
-    if (!isPlay) return
-    const animation = Animated.loop(
-      Animated.timing(spinValue, {
-        toValue: 1,
-        duration: 16000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    )
-    animation.start()
-    return () => { animation.stop() }
-  }, [isPlay, spinValue])
-
-  const spin = spinValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  })
-
+  // 图片样式：封面保持静态，不再旋转
   const discSize = Math.min(width * 0.66, (height - statusBarHeight) * 0.4)
   const subtitle = [musicInfo.singer, (musicInfo as unknown as { album?: string }).album]
     .filter(Boolean)
@@ -99,7 +80,11 @@ export default memo(({ componentId }: { componentId: string }) => {
         </View>
       </View>
 
-      <View style={styles.discArea}>
+      <TouchableOpacity
+        style={styles.discArea}
+        activeOpacity={1}
+        onPress={() => { navigations.pushLyricScreen(componentId) }}
+      >
         <View style={styles.rings}>
           {[1.55, 1.32, 1.14].map((scale, index) => (
             <View
@@ -113,17 +98,15 @@ export default memo(({ componentId }: { componentId: string }) => {
             />
           ))}
         </View>
-        <Animated.View style={{ transform: [{ rotate: spin }] }}>
-          <View style={{ ...styles.disc, width: discSize, height: discSize, borderRadius: discSize / 2 }}>
-            <Image
-              url={musicInfo.pic}
-              nativeID={NAV_SHEAR_NATIVE_IDS.playDetail_pic}
-              style={{ width: discSize - 10, height: discSize - 10, borderRadius: (discSize - 10) / 2 }}
-            />
-            <View style={{ ...styles.discHole, width: discSize * 0.055, height: discSize * 0.055, borderRadius: discSize * 0.0275 }} />
-          </View>
-        </Animated.View>
-      </View>
+        <View style={{ ...styles.disc, width: discSize, height: discSize, borderRadius: discSize / 2 }}>
+          <Image
+            url={musicInfo.pic}
+            nativeID={NAV_SHEAR_NATIVE_IDS.playDetail_pic}
+            style={{ width: discSize - 10, height: discSize - 10, borderRadius: (discSize - 10) / 2 }}
+          />
+          <View style={{ ...styles.discHole, width: discSize * 0.055, height: discSize * 0.055, borderRadius: discSize * 0.0275 }} />
+        </View>
+      </TouchableOpacity>
 
       <View style={styles.trackInfo}>
         <View style={styles.episodeBadge}>

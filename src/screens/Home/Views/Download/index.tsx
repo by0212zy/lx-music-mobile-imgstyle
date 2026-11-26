@@ -63,7 +63,7 @@ export default memo(() => {
   }, [])
 
   const handleClear = useCallback(() => {
-    void clearCompletedDownloads().then(() => { toast('已清除已下载记录') })
+    void clearCompletedDownloads().then(() => { toast('已清除下载任务，已下载歌曲仍保留') })
   }, [])
 
   return (

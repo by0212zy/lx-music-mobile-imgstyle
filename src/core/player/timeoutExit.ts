@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import BackgroundTimer from 'react-native-background-timer'
-import { exitApp } from '@/core/common'
+import { setPause } from '@/plugins/player'
 import playerState from '@/store/player/state'
-import settingState from '@/store/setting/state'
 
 type Hook = (time: number, isPlayedStop: boolean) => void
 
@@ -13,12 +12,10 @@ const timeoutTools = {
   time: -1,
   timeHooks: [] as Hook[],
   exit() {
-    if (settingState.setting['player.timeoutExitPlayed'] && playerState.isPlay) {
-      global.lx.isPlayedStop = true
-      this.callHooks()
-    } else {
-      exitApp('Timeout Exit')
-    }
+    // 图片样式版：定时到点后仅暂停播放，不退出应用
+    global.lx.isPlayedStop = false
+    if (playerState.isPlay) void setPause()
+    this.callHooks()
   },
   getTime() {
     return Math.max(this.time - Math.round((performance.now() - this.startTime) / 1000), -1)

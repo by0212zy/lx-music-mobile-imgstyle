@@ -81,14 +81,14 @@ export const getLyricInfo = async({
   } else if (musicInfo.source == 'local') {
     return getLocalLyricInfo({ musicInfo, isRefresh, onToggleSource })
   } else {
-    // 图片样式版：优先读取下载时保存的歌词文件
+    // 图片样式版：优先读取下载时保存的歌词文件（基于持久化的已下载记录）
     if (!isRefresh) {
-      const { getDownloadItem } = await import('@/core/download')
-      const item = getDownloadItem(musicInfo.id)
-      if (item?.status === 'completed') {
+      const { getDownloadRecord } = await import('@/core/download')
+      const record = getDownloadRecord(musicInfo.id)
+      if (record) {
         const { readFile, existsFile } = await import('@/utils/fs')
-        if (await existsFile(item.lyricPath).catch(() => false)) {
-          const lyric = await readFile(item.lyricPath, 'utf8').catch(() => '')
+        if (await existsFile(record.lyricPath).catch(() => false)) {
+          const lyric = await readFile(record.lyricPath, 'utf8').catch(() => '')
           if (lyric) {
             const info: LX.Player.LyricInfo = { lyric, tlyric: null, rawlrcInfo: { lyric } }
             return info

@@ -3,7 +3,6 @@ import { useI18n } from '@/lang'
 import Menu, { type Menus, type MenuType, type Position } from '@/components/common/Menu'
 import { hasDislike } from '@/core/dislikeList'
 import { hasMusicUrlByMusic } from '@/utils/data'
-import { isDownloaded, addDownloadTasks } from '@/core/download'
 
 export interface SelectInfo {
   musicInfo: LX.Music.MusicInfoOnline
@@ -59,7 +58,6 @@ export default forwardRef<ListMenuType, ListMenuProps>((props: ListMenuProps, re
     const menu = [
       { action: 'play', label: t('play') },
       { action: 'playLater', label: t('play_later') },
-      { action: 'download', label: '下载', disabled: true },
       { action: 'add', label: t('add_to') },
       { action: 'copyName', label: t('copy_name') },
       { action: 'musicSourceDetail', label: t('music_source_detail') },
@@ -67,18 +65,12 @@ export default forwardRef<ListMenuType, ListMenuProps>((props: ListMenuProps, re
       { action: 'dislike', label: t('dislike'), disabled: hasDislike(musicInfo) },
     ]
     setMenus(menu)
-    void Promise.all([hasUrlCache(musicInfo), isDownloaded(musicInfo)]).then(([_has_url_cache, downloaded]) => {
+    void Promise.all([hasUrlCache(musicInfo)]).then(([_has_url_cache]) => {
       let isUpdated = false
       if (has_url_cache != _has_url_cache) {
         has_url_cache = _has_url_cache
         menu[menu.findIndex(m => m.action == 'removeCache')].disabled = !has_url_cache
         isUpdated ||= true
-      }
-      const downloadIndex = menu.findIndex(m => m.action == 'download')
-      if (downloadIndex > -1) {
-        menu[downloadIndex].label = downloaded ? '已下载' : '下载'
-        menu[downloadIndex].disabled = downloaded
-        isUpdated = true
       }
 
       if (isUpdated) setMenus([...menu])
@@ -94,11 +86,6 @@ export default forwardRef<ListMenuType, ListMenuProps>((props: ListMenuProps, re
       case 'playLater':
         props.onPlayLater(selectInfo)
         break
-      case 'download': {
-        const list = selectInfo.single ? [selectInfo.musicInfo] : selectInfo.selectedList
-        void addDownloadTasks(list)
-        break
-      }
       case 'add':
         props.onAdd(selectInfo)
         break
