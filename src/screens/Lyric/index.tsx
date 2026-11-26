@@ -76,20 +76,33 @@ export default memo(({ componentId }: { componentId: string }) => {
   }, [contentHeight])
 
   const realPages = useMemo(() => {
+    if (!lyricLines.length) return [{ start: 0, lines: [] }]
+    // 先算每行高度，再按总高度均分成 N 页，避免「塞满一页再换页」造成末页留白过多
+    const rows = lyricLines.map((line, i) => {
+      const text = line?.text ?? ''
+      const visualLines = Math.max(1, Math.ceil(text.length / charsPerLine))
+      return { index: i, text, visualLines, height: visualLines * textLineHeight + rowGap }
+    })
+    const totalHeight = rows.reduce((sum, row) => sum + row.height, 0)
+    const pageCount = Math.max(1, Math.ceil(totalHeight / Math.max(1, maxContentHeight)))
+    const targetHeight = totalHeight / pageCount
+
     const result: Array<{ start: number, lines: SlideLine[] }> = []
     let current: { start: number, lines: SlideLine[] } | null = null
     let usedHeight = 0
-    for (let i = 0; i < lyricLines.length; i++) {
-      const text = lyricLines[i]?.text ?? ''
-      const visualLines = Math.max(1, Math.ceil(text.length / charsPerLine))
-      const rowHeight = visualLines * textLineHeight + rowGap
-      if (!current || usedHeight + rowHeight > maxContentHeight) {
-        current = { start: i, lines: [] }
+    for (const row of rows) {
+      // 当前页已有内容且再加一行会明显超过目标高度时换页，使各页内容高度接近
+      if (current?.lines.length && usedHeight + row.height > targetHeight) {
+        current = null
+        usedHeight = 0
+      }
+      if (!current) {
+        current = { start: row.index, lines: [] }
         result.push(current)
         usedHeight = 0
       }
-      current.lines.push({ index: i, text, visualLines })
-      usedHeight += rowHeight
+      current.lines.push({ index: row.index, text: row.text, visualLines: row.visualLines })
+      usedHeight += row.height
     }
     if (!result.length) result.push({ start: 0, lines: [] })
     return result
@@ -333,9 +346,7 @@ export default memo(({ componentId }: { componentId: string }) => {
             <TouchableOpacity style={styles.closeBtn} activeOpacity={0.6} onPress={close}>
               <Icon name="close" color="#FFFFFF" size={20} />
             </TouchableOpacity>
-            <View style={styles.readingBadge}>
-              <Text size={12} color="#FFFFFF">阅读中</Text>
-            </View>
+            <View style={styles.headerSpacer} />
             <View style={styles.headerTitle}>
               <Text size={15} color="#FFFFFF" numberOfLines={1}>{musicInfo.name}</Text>
               <Text size={11} color="#9E96B5" numberOfLines={1}>{musicInfo.singer}</Text>
@@ -403,11 +414,8 @@ const styles = createStyle({
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
-  readingBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 10,
-    backgroundColor: '#5B8DEF',
+  headerSpacer: {
+    width: 38,
   },
   headerTitle: {
     flex: 1,
@@ -427,13 +435,13 @@ const styles = createStyle({
   activeBar: {
     borderLeftWidth: 7,
     borderLeftColor: '#FFB300',
-    paddingLeft: 15,
+    paddingLeft: 8,
     flexShrink: 1,
   },
   inactiveBar: {
     borderLeftWidth: 7,
     borderLeftColor: 'transparent',
-    paddingLeft: 15,
+    paddingLeft: 8,
     flexShrink: 1,
   },
   lineText: {
