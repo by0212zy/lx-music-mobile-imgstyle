@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef } from 'react'
+import { memo, useCallback, useMemo, useRef } from 'react'
 import { View, TouchableOpacity, StatusBar as RNStatusBar } from 'react-native'
 
 import Image from '@/components/common/Image'
@@ -9,7 +9,8 @@ import SettingPopup, { type SettingPopupType } from '../components/SettingPopup'
 import TimeoutExitEditModal, { type TimeoutExitEditModalType, useTimeInfo } from '@/components/TimeoutExitEditModal'
 import SkipIntroOutroModal, { type SkipIntroOutroModalType } from '@/components/SkipIntroOutroModal'
 import { CollectItem, CommentItem, MoreItem, PlayModeItem } from './ImageStyleMoreItems'
-import { usePlayerMusicInfo, useProgress, useIsPlay } from '@/store/player/hook'
+import { usePlayerMusicInfo, useProgress, useIsPlay, usePlayInfo, usePlayMusicInfo } from '@/store/player/hook'
+import { getList } from '@/core/player/playInfo'
 import { useSettingValue } from '@/store/setting/hook'
 import { useStatusbarHeight } from '@/store/common/hook'
 import { useWindowSize } from '@/utils/hooks'
@@ -23,6 +24,8 @@ import { createStyle } from '@/utils/tools'
 export default memo(({ componentId }: { componentId: string }) => {
   const musicInfo = usePlayerMusicInfo()
   const isPlay = useIsPlay()
+  const playInfo = usePlayInfo()
+  const playMusicInfo = usePlayMusicInfo()
   const { nowPlayTime, maxPlayTime, progress, nowPlayTimeStr, maxPlayTimeStr } = useProgress()
   const buffered = useBufferProgress()
   const { width, height } = useWindowSize()
@@ -33,6 +36,13 @@ export default memo(({ componentId }: { componentId: string }) => {
   const skipModalRef = useRef<SkipIntroOutroModalType>(null)
   const timeInfo = useTimeInfo()
   const playbackRate = useSettingValue('player.playbackRate')
+
+  // 当前列表播放序号 / 列表总数
+  const playOrder = useMemo(() => {
+    const index = playInfo.playIndex
+    const total = Math.max(0, getList(playMusicInfo.listId).length)
+    return { current: index >= 0 ? index + 1 : 0, total }
+  }, [playInfo.playIndex, playMusicInfo.listId])
 
   // 图片样式：封面保持静态，不再旋转
   const discSize = Math.min(width * 0.66, (height - statusBarHeight) * 0.4)
@@ -70,6 +80,12 @@ export default memo(({ componentId }: { componentId: string }) => {
             <Icon name="chevron-left" color="#FFFFFF" size={20} />
           </TouchableOpacity>
           <View style={styles.headerSpacer} />
+          <View style={styles.orderBadge}>
+            <View style={styles.orderCurrent}>
+              <Text size={11} color="#FFFFFF" style={styles.orderCurrentText}>第 {playOrder.current} 首</Text>
+            </View>
+            <Text size={11} color="#9E96B5" style={styles.orderTotal}>共 {playOrder.total} 首</Text>
+          </View>
           <TouchableOpacity style={styles.gainBtn} activeOpacity={0.6} onPress={() => settingPopupRef.current?.show()}>
             <Icon name="setting" color="#FFFFFF" size={16} />
             <Text size={12} color="#FFFFFF" style={styles.gainBtnText}>设置</Text>
@@ -180,6 +196,7 @@ const styles = createStyle({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
+    gap: 8,
   },
   headerRoundBtn: {
     width: 38,
@@ -191,6 +208,23 @@ const styles = createStyle({
   },
   headerSpacer: {
     flex: 1,
+  },
+  orderBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  orderCurrent: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: '#2979FF',
+  },
+  orderCurrentText: {
+    fontWeight: '700',
+  },
+  orderTotal: {
+    fontWeight: '500',
   },
   gainBtn: {
     flexDirection: 'row',

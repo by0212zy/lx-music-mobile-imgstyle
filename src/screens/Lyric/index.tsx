@@ -10,10 +10,12 @@ import Text from '@/components/common/Text'
 import { Icon } from '@/components/common/Icon'
 import { useStatusbarHeight } from '@/store/common/hook'
 import { useSettingValue } from '@/store/setting/hook'
-import { usePlayerMusicInfo, useIsPlay } from '@/store/player/hook'
+import { usePlayerMusicInfo, useIsPlay, usePlayInfo, usePlayMusicInfo, useProgress } from '@/store/player/hook'
 import { useWindowSize } from '@/utils/hooks'
 import { useLrcPlay, useLrcSet } from '@/plugins/lyric'
 import { playNext, playPrev, togglePlay } from '@/core/player/player'
+import { getList } from '@/core/player/playInfo'
+import { pop } from '@/navigation'
 import { createStyle } from '@/utils/tools'
 
 // 图片样式：独立歌词阅读页
@@ -47,9 +49,12 @@ interface PendingSwitch {
   startedAt: number
 }
 
-export default memo(() => {
+export default memo(({ componentId }: { componentId: string }) => {
   const musicInfo = usePlayerMusicInfo()
   const isPlay = useIsPlay()
+  const { nowPlayTime } = useProgress()
+  const playInfo = usePlayInfo()
+  const playMusicInfo = usePlayMusicInfo()
   const lyricLines = useLrcSet()
   const { line: playLine } = useLrcPlay()
   const { width, height } = useWindowSize()
@@ -61,6 +66,14 @@ export default memo(() => {
   const bottomBlankLines = useSettingValue('playDetail.lyricBottomBlankLines') ?? 0
   const lrcFontSize = useSettingValue('playDetail.vertical.style.lrcFontSize') ?? 210
   const fontSize = lrcFontSize / 10
+
+  // 当前列表播放序号 / 列表总数（playIndex 为列表内 0-based 位置）
+  const playOrder = useMemo(() => {
+    const index = playInfo.playIndex
+    const list = getList(playMusicInfo.listId)
+    const total = Math.max(0, list.length)
+    return { current: index >= 0 ? index + 1 : 0, total }
+  }, [playInfo.playIndex, playMusicInfo.listId])
 
   const [contentHeight, setContentHeight] = useState(Math.max(240, height - statusBarHeight - 58 - 100))
   const baseLineHeight = Math.max(20, Math.round(fontSize * 1.3))
@@ -123,10 +136,52 @@ export default memo(() => {
   const anchorRef = useRef(false)
   const playLineRef = useRef(playLine)
   playLineRef.current = playLine
+  const musicIdRef = useRef(musicInfo.id)
+  musicIdRef.current = musicInfo.id
+
+  // 切上一首 seek 竞态：歌词异步就绪后我们 seek 到末页时间，但播放器 URL 加载完成后
+  // handlePlayMusic 会用其捕获的旧 time（往往是 0）再 seekTo 覆盖。
+  // 策略：记录目标时间，在守卫窗口内每次进度被拉回开头（<1s）就再次 seek，直到进度追上目标。
+  const switchSeekRef = useRef<{ id: string | null, time: number, until: number } | null>(null)
+  const nowPlayTimeRef = useRef(nowPlayTime)
+  nowPlayTimeRef.current = nowPlayTime
+
+  const cancelSwitchSeek = useCallback(() => {
+    switchSeekRef.current = null
+  }, [])
+
+  // 立即 seek 到目标，并开启一个约 6 秒的守卫窗口（由下方 effect 每 250ms 检查）
+  const scheduleSwitchSeek = useCallback((targetId: string | null, timeSec: number) => {
+    switchSeekRef.current = { id: targetId, time: timeSec, until: Date.now() + 6000 }
+    global.app_event.setProgress(timeSec)
+  }, [])
+
+  // 守卫：目标进度被播放器覆盖回开头时重新 seek；进度已追上目标或超时则结束
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const s = switchSeekRef.current
+      if (!s) return
+      if (s.id !== musicIdRef.current || Date.now() > s.until) {
+        switchSeekRef.current = null
+        return
+      }
+      const cur = nowPlayTimeRef.current
+      if (cur >= s.time - 0.5) {
+        // 已追上目标进度，守卫完成
+        switchSeekRef.current = null
+        return
+      }
+      // 进度被拉回开头（含刚切歌的 0），重新 seek 守住末页起点
+      if (cur < 1) global.app_event.setProgress(s.time)
+    }, 250)
+    return () => { clearInterval(timer) }
+  }, [])
 
   // PagerView 通过 key 重建：切歌/首装定位时改 key + initialPage，一次性到位，无回弹
   const [pagerKey, setPagerKey] = useState(0)
   const [initialPage, setInitialPage] = useState(SENTINEL)
+  // 歌词就绪并完成首次定位前不渲染 PagerView，避免"先显示首页再跳到播放页"的乱跳
+  const [pagerReady, setPagerReady] = useState(false)
 
   const [page, setPage] = useState(0)
   const [selectedLine, setSelectedLine] = useState<number | null>(null)
@@ -149,6 +204,7 @@ export default memo(() => {
   const requestSwitch = useCallback((direction: 'prev' | 'next') => {
     if (pendingSwitchRef.current) return
     if (navLockRef.current) return
+    cancelSwitchSeek()
     lockNav()
     pendingSwitchRef.current = {
       dir: direction,
@@ -158,7 +214,7 @@ export default memo(() => {
     }
     if (direction === 'prev') void playPrev()
     else void playNext()
-  }, [lockNav, musicInfo.id, lyricLines])
+  }, [lockNav, cancelSwitchSeek, musicInfo.id, lyricLines])
 
   // 记录用户真实拖拽：程序 setPage / key 重建不产生 dragging 状态，据此排除程序性事件
   const handleScrollStateChanged = useCallback(({ nativeEvent }: PageScrollStateChangedNativeEvent) => {
@@ -225,6 +281,7 @@ export default memo(() => {
     dragAtRef.current = 0
     setInitialPage(target + SENTINEL)
     setPagerKey(k => k + 1)
+    setPagerReady(true)
   }, [lyricLines, realPageCount, pageForLine])
 
   // 切歌定位：musicId 变化 + 新歌词就绪后，重建 PagerView 一次性定位
@@ -250,7 +307,9 @@ export default memo(() => {
     const target = sw.dir === 'prev' ? Math.max(0, realPageCount - 1) : 0
     if (sw.dir === 'prev') {
       const lineIndex = clamp(realPages[target]?.start ?? 0, 0, Math.max(0, lyricLines.length - 1))
-      global.app_event.setProgress((lyricLines[lineIndex]?.time ?? 0) / 1000)
+      const timeSec = (lyricLines[lineIndex]?.time ?? 0) / 1000
+      // 立即 seek + 短时重试，防止播放器 URL 加载完成后的 seekTo(旧进度) 覆盖
+      scheduleSwitchSeek(musicInfo.id, timeSec)
     }
 
     pendingSwitchRef.current = null
@@ -266,23 +325,26 @@ export default memo(() => {
     setPage(target)
     setInitialPage(target + SENTINEL)
     setPagerKey(k => k + 1)
-  }, [musicInfo.id, musicInfo.lrc, lyricLines, realPageCount, realPages])
+    setPagerReady(true)
+  }, [musicInfo.id, musicInfo.lrc, lyricLines, realPageCount, realPages, scheduleSwitchSeek])
 
   useEffect(() => {
     if (selectedLine != null && selectedLine === playLine) setSelectedLine(null)
   }, [playLine, selectedLine])
 
   const handleLinePress = useCallback((index: number) => {
+    cancelSwitchSeek()
     anchorRef.current = false
     syncModeRef.current = true
     setSelectedLine(index)
     const time = lyricLines[index]?.time ?? 0
     global.app_event.setProgress(time / 1000)
-  }, [lyricLines])
+  }, [lyricLines, cancelSwitchSeek])
 
   const goPage = useCallback((delta: number) => {
     if (navLockRef.current) return
     if (pendingSwitchRef.current) return
+    cancelSwitchSeek()
     if ((delta > 0 && pageRef.current >= realPageCount - 1) || (delta < 0 && pageRef.current <= 0)) {
       requestSwitch(delta > 0 ? 'next' : 'prev')
       return
@@ -298,10 +360,11 @@ export default memo(() => {
     pagerRef.current?.setPage(target + SENTINEL)
     const lineIndex = clamp(realPages[target]?.start ?? 0, 0, Math.max(0, lyricLines.length - 1))
     global.app_event.setProgress((lyricLines[lineIndex]?.time ?? 0) / 1000)
-  }, [realPages, realPageCount, lyricLines, lockNav, requestSwitch])
+  }, [realPages, realPageCount, lyricLines, lockNav, requestSwitch, cancelSwitchSeek])
 
   const handleTogglePlay = useCallback(() => {
     togglePlay()
+    cancelSwitchSeek()
     anchorRef.current = false
     syncModeRef.current = true
     setSelectedLine(null)
@@ -309,7 +372,7 @@ export default memo(() => {
     pageRef.current = target
     setPage(target)
     pagerRef.current?.setPage(target + SENTINEL)
-  }, [pageForLine, playLine, realPageCount])
+  }, [pageForLine, playLine, realPageCount, cancelSwitchSeek])
 
   const renderPage = (slide: Slide) => (
     <View style={{ ...styles.page, height: contentHeight }} collapsable={false} key={slide.key}>
@@ -352,24 +415,35 @@ export default memo(() => {
         <RNStatusBar barStyle="light-content" backgroundColor="transparent" translucent />
         <View style={{ paddingTop: statusBarHeight }}>
           <View style={styles.header}>
+            <TouchableOpacity style={styles.backBtn} activeOpacity={0.6} onPress={() => { void pop(componentId) }}>
+              <Icon name="chevron-left" color="#FFFFFF" size={20} />
+            </TouchableOpacity>
             <View style={styles.headerTitle}>
-              <Text size={15} color="#FFFFFF" numberOfLines={1} style={styles.headerTitleText}>{musicInfo.name}</Text>
+              <Text size={15} color="#FFFFFF" numberOfLines={1} style={styles.headerSongName}>{musicInfo.name}</Text>
               <Text size={11} color="#9E96B5" numberOfLines={1} style={styles.headerTitleText}>{musicInfo.singer}</Text>
+            </View>
+            <View style={styles.orderBadge}>
+              <View style={styles.orderCurrent}>
+                <Text size={11} color="#FFFFFF" style={styles.orderCurrentText}>第 {playOrder.current} 首</Text>
+              </View>
+              <Text size={11} color="#9E96B5" style={styles.orderTotal}>共 {playOrder.total} 首</Text>
             </View>
           </View>
         </View>
 
-        <PagerView
-          key={pagerKey}
-          ref={pagerRef}
-          initialPage={initialPage}
-          onPageSelected={handlePageSelected}
-          onPageScrollStateChanged={handleScrollStateChanged}
-          onLayout={handlePagerLayout}
-          style={styles.pager}
-        >
-          {slides.map(renderPage)}
-        </PagerView>
+        {pagerReady
+          ? <PagerView
+              key={pagerKey}
+              ref={pagerRef}
+              initialPage={initialPage}
+              onPageSelected={handlePageSelected}
+              onPageScrollStateChanged={handleScrollStateChanged}
+              onLayout={handlePagerLayout}
+              style={styles.pager}
+            >
+              {slides.map(renderPage)}
+            </PagerView>
+          : <View style={styles.pager} />}
 
         <View style={styles.footer}>
           <Text size={12} color="#8E86A8" style={styles.pageIndicator}>{page + 1} / {realPageCount}</Text>
@@ -409,6 +483,15 @@ const styles = createStyle({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
+    gap: 10,
+  },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
   headerTitle: {
     flex: 1,
@@ -416,6 +499,27 @@ const styles = createStyle({
   },
   headerTitleText: {
     textAlign: 'left',
+  },
+  headerSongName: {
+    textAlign: 'left',
+    fontWeight: '700',
+  },
+  orderBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  orderCurrent: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: '#2979FF',
+  },
+  orderCurrentText: {
+    fontWeight: '700',
+  },
+  orderTotal: {
+    fontWeight: '500',
   },
   pager: {
     flex: 1,
