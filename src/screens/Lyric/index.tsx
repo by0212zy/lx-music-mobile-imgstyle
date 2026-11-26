@@ -23,6 +23,8 @@ import { createStyle } from '@/utils/tools'
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 // 前后各放一个哨兵页：滑到上一首 / 下一首
 const SENTINEL = 1
+// 切歌后 PagerView children 数量变化会引发回弹/越界事件，锁定期内一律忽略切歌
+const SWITCH_LOCK_MS = 1200
 
 interface SlideLine {
   index: number
@@ -98,6 +100,9 @@ export default memo(({ componentId }: { componentId: string }) => {
     { key: 'next', sentinel: 'next', start: 0, lines: [] },
   ], [realPages])
 
+  // 通过 key/sentinel 判断页面类型，而非依赖会随 children 数量变化的 position 数字
+  const slideAt = useCallback((position: number): Slide | undefined => slides[position], [slides])
+
   const pageForLine = useCallback((line: number) => {
     const idx = clamp(line, 0, Math.max(0, lyricLines.length - 1))
     for (let i = 0; i < realPages.length; i++) {
@@ -112,28 +117,19 @@ export default memo(({ componentId }: { componentId: string }) => {
   const programmaticRef = useRef(false)
   const firstPageEventRef = useRef(true)
   const syncModeRef = useRef(true)
-  // 标记本次切歌是否为「切上一首」，用于定位到上一首最后一页
+  // 切上一首：定位到上一首最后一页
   const pendingPrevRef = useRef(false)
-  // 切歌进行中标记：PagerView children 变化引起的回弹/越界事件必须忽略，否则会连续切歌
-  const switchingRef = useRef(false)
-  const switchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 切歌锁：切歌发起后到 children 稳定前，忽略所有 onPageSelected 的切歌判定
+  // 用截止时间戳而非布尔，覆盖 PagerView 异步回弹的完整窗口
+  const switchLockUntilRef = useRef(0)
   // 翻页动画锁：快速连续点击时忽略后续请求，避免来回乱跳
   const navLockRef = useRef(false)
   const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [page, setPage] = useState(0)
 
-  const beginSwitch = useCallback(() => {
-    switchingRef.current = true
-    if (switchTimerRef.current) clearTimeout(switchTimerRef.current)
-    // 兜底：歌词加载失败或切歌未真正发生时也要解锁
-    switchTimerRef.current = setTimeout(() => {
-      switchingRef.current = false
-    }, 2000)
-  }, [])
-
-  const endSwitch = useCallback(() => {
-    switchingRef.current = false
-    if (switchTimerRef.current) clearTimeout(switchTimerRef.current)
+  const isSwitchLocked = useCallback(() => Date.now() < switchLockUntilRef.current, [])
+  const lockSwitch = useCallback(() => {
+    switchLockUntilRef.current = Date.now() + SWITCH_LOCK_MS
   }, [])
 
   const lockNav = useCallback(() => {
@@ -146,7 +142,6 @@ export default memo(({ componentId }: { componentId: string }) => {
 
   useEffect(() => () => {
     if (navTimerRef.current) clearTimeout(navTimerRef.current)
-    if (switchTimerRef.current) clearTimeout(switchTimerRef.current)
   }, [])
   const [selectedLine, setSelectedLine] = useState<number | null>(null)
 
@@ -155,6 +150,25 @@ export default memo(({ componentId }: { componentId: string }) => {
   const close = useCallback(() => {
     void pop(componentId)
   }, [componentId])
+
+  // 统一的切歌请求：先锁定，再把页面停在安全真实页，最后发起切歌
+  const requestSwitch = useCallback((direction: 'prev' | 'next') => {
+    lockNav()
+    lockSwitch()
+    // 立刻离开哨兵页，避免 children 变化时 clamped 到另一侧哨兵而触发反向切歌
+    const safePage = clamp(pageRef.current, 0, Math.max(0, realPageCount - 1))
+    programmaticRef.current = true
+    pageRef.current = safePage
+    setPage(safePage)
+    pagerRef.current?.setPage(safePage + SENTINEL)
+    if (direction === 'prev') {
+      pendingPrevRef.current = true
+      void playPrev()
+    } else {
+      pendingPrevRef.current = false
+      void playNext()
+    }
+  }, [lockNav, lockSwitch, realPageCount])
 
   const handlePageSelected = useCallback(({ nativeEvent }: PagerViewOnPageSelectedEvent) => {
     const position = nativeEvent.position
@@ -166,33 +180,29 @@ export default memo(({ componentId }: { componentId: string }) => {
     // 程序性翻页（自动跟随 / 底部按钮 / 切歌定位）：只同步页码显示，绝不触发切歌
     if (programmaticRef.current) {
       programmaticRef.current = false
-      if (position >= SENTINEL && position <= realPageCount) {
-        const realPage = position - SENTINEL
+      const slide = slideAt(position)
+      if (slide && !slide.sentinel) {
+        const realPage = clamp(position - SENTINEL, 0, Math.max(0, realPageCount - 1))
         pageRef.current = realPage
         setPage(realPage)
       }
       return
     }
-    // 切歌进行中：忽略哨兵页的重复触发（切歌后页数变化会让 PagerView 回弹，曾导致 30→29→31）
-    if (switchingRef.current) return
-    // 滑到前哨兵页 -> 上一首
-    if (position === 0) {
+    // 切歌锁定期内：children 变化引发的回弹/越界事件一律忽略
+    if (isSwitchLocked()) return
+    const slide = slideAt(position)
+    // 用 sentinel 属性判断，而非 position 数字
+    if (slide?.sentinel === 'prev') {
       if (navLockRef.current) return
-      lockNav()
-      beginSwitch()
-      pendingPrevRef.current = true
-      void playPrev()
+      requestSwitch('prev')
       return
     }
-    // 滑到后哨兵页 -> 下一首
-    if (position === realPageCount + 1) {
+    if (slide?.sentinel === 'next') {
       if (navLockRef.current) return
-      lockNav()
-      beginSwitch()
-      void playNext()
+      requestSwitch('next')
       return
     }
-    const realPage = position - SENTINEL
+    const realPage = clamp(position - SENTINEL, 0, Math.max(0, realPageCount - 1))
     pageRef.current = realPage
     setPage(realPage)
     setSelectedLine(null)
@@ -200,14 +210,14 @@ export default memo(({ componentId }: { componentId: string }) => {
     // 若滑到当前播放歌词所在页，则恢复自动跟随；不在当前播放页则保持不跟随
     const playingPage = pageForLine(playLine)
     syncModeRef.current = realPage === playingPage
-  }, [playLine, pageForLine, realPageCount, lockNav, beginSwitch])
+  }, [slideAt, realPageCount, isSwitchLocked, requestSwitch, pageForLine, playLine])
 
   // 播放进度变化时自动翻页
   useEffect(() => {
-    if (pendingPrevRef.current || navLockRef.current || switchingRef.current) return
+    if (pendingPrevRef.current || navLockRef.current || isSwitchLocked()) return
     const target = pageForLine(playLine)
     if (!syncModeRef.current) {
-      // 播放已推进到用户当前停留的页 -> 恢复自动跟随（需求3）
+      // 播放已推进到用户当前停留的页 -> 恢复自动跟随
       if (target === pageRef.current) syncModeRef.current = true
       return
     }
@@ -216,14 +226,13 @@ export default memo(({ componentId }: { componentId: string }) => {
     pageRef.current = target
     setPage(target)
     pagerRef.current?.setPage(target + SENTINEL)
-  }, [playLine, pageForLine])
+  }, [playLine, pageForLine, isSwitchLocked])
 
-  // 切歌后回到同步模式
+  // 切歌后回到同步模式并定位
   useEffect(() => {
-    if (!lyricLines.length) {
-      endSwitch()
-      return
-    }
+    if (!lyricLines.length) return
+    // 歌词可能异步二次加载并再次改变 children 数量，这里重置锁覆盖后续回弹
+    lockSwitch()
     syncModeRef.current = true
     setSelectedLine(null)
     let target: number
@@ -241,7 +250,6 @@ export default memo(({ componentId }: { componentId: string }) => {
     setPage(target)
     programmaticRef.current = true
     pagerRef.current?.setPage(target + SENTINEL)
-    endSwitch()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lyricLines, musicInfo.id])
 
@@ -259,17 +267,10 @@ export default memo(({ componentId }: { componentId: string }) => {
 
   // 2. 底部按钮翻页 -> 同步播放进度；在边界继续翻则切歌
   const goPage = useCallback((delta: number) => {
-    if (navLockRef.current) return
+    if (navLockRef.current || isSwitchLocked()) return
     // 边界继续翻：下一首 / 上一首
     if ((delta > 0 && pageRef.current >= realPageCount - 1) || (delta < 0 && pageRef.current <= 0)) {
-      lockNav()
-      beginSwitch()
-      if (delta > 0) {
-        void playNext()
-      } else {
-        pendingPrevRef.current = true
-        void playPrev()
-      }
+      requestSwitch(delta > 0 ? 'next' : 'prev')
       return
     }
     const target = clamp(pageRef.current + delta, 0, realPageCount - 1)
@@ -283,7 +284,7 @@ export default memo(({ componentId }: { componentId: string }) => {
     pagerRef.current?.setPage(target + SENTINEL)
     const lineIndex = clamp(realPages[target].start, 0, lyricLines.length - 1)
     global.app_event.setProgress((lyricLines[lineIndex]?.time ?? 0) / 1000)
-  }, [realPages, realPageCount, lyricLines, lockNav, beginSwitch])
+  }, [realPages, realPageCount, lyricLines, lockNav, isSwitchLocked, requestSwitch])
 
   // 播放/暂停时重新定位到当前播放歌词行
   const handleTogglePlay = useCallback(() => {
@@ -303,8 +304,10 @@ export default memo(({ componentId }: { componentId: string }) => {
         slide.sentinel
           ? <Text size={16} color="#8E86A8" style={styles.emptyText}>{slide.sentinel === 'prev' ? '滑动切换上一首' : '滑动切换下一首'}</Text>
           : slide.lines.length
-            ? slide.lines.map(({ index, text }) => {
+            ? slide.lines.map(({ index, text, visualLines }) => {
               const active = index === highlightLine
+              // 竖条高度精确匹配整段歌词（含折行），不超出文字顶部和底部
+              const barHeight = visualLines * textLineHeight
               return (
                 <TouchableOpacity
                   style={{ ...styles.lineRow, marginBottom: rowGap }}
@@ -312,7 +315,7 @@ export default memo(({ componentId }: { componentId: string }) => {
                   key={index}
                   onPress={() => { handleLinePress(index) }}
                 >
-                  <View style={active ? styles.activeBar : styles.inactiveBar} />
+                  <View style={{ ...(active ? styles.activeBar : styles.inactiveBar), height: barHeight }} />
                   <Text
                     size={fontSize}
                     style={{
@@ -429,17 +432,16 @@ const styles = createStyle({
     alignItems: 'flex-start',
   },
   activeBar: {
-    width: 3,
-    height: 22,
-    borderRadius: 2,
+    width: 7,
+    borderRadius: 3,
     backgroundColor: '#FFB300',
-    marginRight: 12,
-    marginTop: 2,
+    marginRight: 15,
+    marginTop: 1,
   },
   inactiveBar: {
-    width: 3,
-    marginRight: 12,
-    marginTop: 2,
+    width: 7,
+    marginRight: 15,
+    marginTop: 1,
   },
   lineText: {
     fontWeight: '700',
