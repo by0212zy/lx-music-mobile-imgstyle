@@ -1,17 +1,19 @@
 import { memo, useCallback, useState } from 'react'
-import { View, StyleSheet } from 'react-native'
+import { View, StyleSheet, TouchableOpacity } from 'react-native'
 
 import Progress, { ProgressPlain } from '@/components/player/Progress'
 import Status from './Status'
-import { useProgress } from '@/store/player/hook'
+import { useProgress, usePlayerMusicInfo } from '@/store/player/hook'
 import { useTheme } from '@/store/theme/hook'
 import { createStyle } from '@/utils/tools'
 import Text from '@/components/common/Text'
 import { COMPONENT_IDS } from '@/config/constant'
 import { usePageVisible } from '@/store/common/hook'
+import commonState from '@/store/common/state'
 import { scaleSizeH, scaleSizeW, scaleSizeWR } from '@/utils/pixelRatio'
 import { useBufferProgress } from '@/plugins/player'
 import { useSettingValue } from '@/store/setting/hook'
+import { navigations } from '@/navigation'
 
 const FONT_SIZE = 13
 const PADDING_TOP_RAW = 1.8
@@ -36,13 +38,19 @@ export default ({ isHome }: { isHome: boolean }) => {
   const { maxPlayTimeStr, nowPlayTimeStr, progress, maxPlayTime } = useProgress(autoUpdate)
   const buffered = useBufferProgress()
   const allowProgressBarSeek = useSettingValue('common.allowProgressBarSeek')
+  const musicInfo = usePlayerMusicInfo()
+
+  const handleOpenPlayer = useCallback(() => {
+    if (!musicInfo.id) return
+    navigations.pushPlayDetailScreen(commonState.componentIds.home!)
+  }, [musicInfo.id])
 
   usePageVisible([COMPONENT_IDS.home], useCallback((visible) => {
     if (isHome) setAutoUpdate(visible)
   }, [isHome]))
 
   return (
-    <View style={stylesRaw.container}>
+    <TouchableOpacity style={stylesRaw.container} activeOpacity={1} onPress={handleOpenPlayer}>
       {/* <MusicName /> */}
       <View style={styles.status}>
         <Status autoUpdate={autoUpdate} />
@@ -55,11 +63,11 @@ export default ({ isHome }: { isHome: boolean }) => {
       <View style={[StyleSheet.absoluteFill, stylesRaw.progress]}>
         {
           allowProgressBarSeek
-            ? <Progress progress={progress} duration={maxPlayTime} buffered={buffered} paddingTop={PADDING_TOP_PROGRESS} />
-            : <ProgressPlain progress={progress} duration={maxPlayTime} buffered={buffered} paddingTop={PADDING_TOP_PROGRESS} />
+            ? <Progress progress={progress} duration={maxPlayTime} buffered={buffered} paddingTop={PADDING_TOP_PROGRESS} onTap={handleOpenPlayer} />
+            : <ProgressPlain progress={progress} duration={maxPlayTime} buffered={buffered} paddingTop={PADDING_TOP_PROGRESS} onTap={handleOpenPlayer} />
         }
       </View>
-    </View>
+    </TouchableOpacity>
   )
 }
 

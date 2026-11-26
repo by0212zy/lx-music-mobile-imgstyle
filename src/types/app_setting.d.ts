@@ -237,9 +237,14 @@ declare global {
       'playDetail.lyricFontWeight': number
 
       /**
-       * 图片样式歌词页-歌词行间距
+       * 图片样式歌词页-歌词行间距（段落间距）
        */
       'playDetail.lyricLineSpacing': number
+
+      /**
+       * 图片样式歌词页-歌词折行行距（一句歌词换行后各行之间的距离，默认为行间距的一半）
+       */
+      'playDetail.lyricWrapLineSpacing': number
 
       /**
        * 图片样式播放页-跳过片头秒数

@@ -152,9 +152,12 @@ export default () => {
     // setMaxplayTime(playProgress.maxPlayTime)
     handlePause()
     if (!playerState.playMusicInfo.isTempPlay) {
+      // 图片样式版：启动恢复时 setPlayMusicInfo 会把进度重置为 0 并触发 musicToggled，
+      // 若照此保存会覆盖磁盘上记住的播放进度。恢复期间改用恢复数据保存，避免进度丢失。
+      const restoring = global.lx.restorePlayInfo
       void savePlayInfo({
-        time: playerState.progress.nowPlayTime,
-        maxTime: playerState.progress.maxPlayTime,
+        time: restoring ? restoring.time : playerState.progress.nowPlayTime,
+        maxTime: restoring ? restoring.maxTime : playerState.progress.maxPlayTime,
         listId: playerState.playMusicInfo.listId!,
         index: playerState.playInfo.playIndex,
       })
@@ -194,8 +197,20 @@ export default () => {
   }
 
   // 修复在某些设备上屏幕状态改变事件未触发导致的进度条未更新的问题
+  // 图片样式版：退到后台/锁屏前也保存一次进度，避免关闭应用时间较长后进度丢失
   AppState.addEventListener('change', (state) => {
     if (state == 'active' && !isScreenOn) handleScreenStateChanged('ON')
+    if ((state == 'background' || state == 'inactive') &&
+        settingState.setting['player.isSavePlayTime'] &&
+        !playerState.playMusicInfo.isTempPlay &&
+        playerState.musicInfo.id) {
+      void savePlayInfo({
+        time: playerState.progress.nowPlayTime,
+        maxTime: playerState.progress.maxPlayTime,
+        listId: playerState.playMusicInfo.listId!,
+        index: playerState.playInfo.playIndex,
+      })
+    }
   })
 
   global.app_event.on('play', handlePlay)

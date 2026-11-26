@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
-import { View, PanResponder } from 'react-native'
+import { View, PanResponder, TouchableOpacity } from 'react-native'
 import { useDrag } from '@/utils/hooks'
 import { createStyle } from '@/utils/tools'
 import { useTheme } from '@/store/theme/hook'
@@ -26,17 +26,18 @@ const BufferedBar = memo(({ progress }: { progress: number }) => {
   return <View style={{ ...styles.progressBar, backgroundColor: theme['c-primary-light-600-alpha-900'], position: 'absolute', width: `${progress * 100}%`, left: 0, top: 0 }}></View>
 })
 
-const PreassBar = memo(({ onDragState, setDragProgress, onSetProgress }: {
+const PreassBar = memo(({ onDragState, setDragProgress, onSetProgress, onTap }: {
   onDragState: (drag: boolean) => void
   setDragProgress: (progress: number) => void
   onSetProgress: (progress: number) => void
+  onTap?: () => void
 }) => {
   const {
     onLayout,
     onDragStart,
     onDragEnd,
     onDrag,
-  } = useDrag(onSetProgress, onDragState, setDragProgress)
+  } = useDrag(onSetProgress, onDragState, setDragProgress, onTap)
   // const handlePress = useCallback((event: GestureResponderEvent) => {
   //   onPress(event.nativeEvent.locationX)
   // }, [onPress])
@@ -67,11 +68,12 @@ const PreassBar = memo(({ onDragState, setDragProgress, onSetProgress }: {
 })
 
 
-export const ProgressPlain = ({ progress, duration, buffered, paddingTop }: {
+export const ProgressPlain = ({ progress, duration, buffered, paddingTop, onTap }: {
   progress: number
   duration: number
   buffered: number
   paddingTop?: number
+  onTap?: () => void
 }) => {
   // const { progress } = usePlayTimeBuffer()
   const theme = useTheme()
@@ -90,16 +92,17 @@ export const ProgressPlain = ({ progress, duration, buffered, paddingTop }: {
         <BufferedBar progress={buffered} />
         <View style={{ ...styles.progressBar, backgroundColor: theme['c-primary-alpha-900'], width: progressStr, position: 'absolute', left: 0, top: 0 }} />
       </View>
-      <View style={styles.pressBar} />
+      <TouchableOpacity style={styles.pressBar} activeOpacity={1} onPress={onTap} />
     </View>
   )
 }
 
-const Progress = ({ progress, duration, buffered, paddingTop }: {
+const Progress = ({ progress, duration, buffered, paddingTop, onTap }: {
   progress: number
   duration: number
   buffered: number
   paddingTop?: number
+  onTap?: () => void
 }) => {
   // const { progress } = usePlayTimeBuffer()
   const theme = useTheme()
@@ -133,7 +136,7 @@ const Progress = ({ progress, duration, buffered, paddingTop }: {
               )
         }
       </View>
-      <PreassBar onDragState={setDraging} setDragProgress={setDragProgress} onSetProgress={onSetProgress} />
+      <PreassBar onDragState={setDraging} setDragProgress={setDragProgress} onSetProgress={onSetProgress} onTap={onTap} />
       {/* <View style={{ ...styles.progressBar, height: '100%', width: progressStr }}><Pressable style={styles.progressDot}></Pressable></View> */}
     </View>
   )

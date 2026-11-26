@@ -117,3 +117,40 @@ export const SettingLyricLineSpacing = () => {
     </View>
   )
 }
+
+export const SettingLyricWrapLineSpacing = () => {
+  const theme = useTheme()
+  const wrapLineSpacing = useSettingValue('playDetail.lyricWrapLineSpacing') ?? 5
+  const [sliderValue, setSliderValue] = useState(wrapLineSpacing)
+  const [isSliding, setSliding] = useState(false)
+
+  const handleSlidingStart: SliderProps['onSlidingStart'] = value => {
+    setSliding(true)
+  }
+  const handleValueChange: SliderProps['onValueChange'] = value => {
+    setSliderValue(value)
+  }
+  const handleSlidingComplete: SliderProps['onSlidingComplete'] = value => {
+    setSliding(false)
+    if (wrapLineSpacing === value) return
+    updateSetting({ 'playDetail.lyricWrapLineSpacing': value })
+  }
+
+  return (
+    <View style={styles.container}>
+      <Text>歌词折行行距</Text>
+      <View style={styles.content}>
+        <Text style={styles.label} color={theme['c-font-label']}>{isSliding ? sliderValue : wrapLineSpacing}</Text>
+        <Slider
+          minimumValue={0}
+          maximumValue={20}
+          step={1}
+          value={wrapLineSpacing}
+          onSlidingStart={handleSlidingStart}
+          onValueChange={handleValueChange}
+          onSlidingComplete={handleSlidingComplete}
+        />
+      </View>
+    </View>
+  )
+}

@@ -43,6 +43,7 @@ const defaultSetting: LX.AppSetting = {
   'playDetail.isShowLyricProgressSetting': false,
   'playDetail.lyricFontWeight': 800,
   'playDetail.lyricLineSpacing': 10,
+  'playDetail.lyricWrapLineSpacing': 5,
   'playDetail.skipIntro': 0,
   'playDetail.skipOutro': 0,
   'playDetail.lyricBottomBlankLines': 0,
