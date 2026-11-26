@@ -12,6 +12,7 @@ import type { InitState } from '@/store/common/state'
 import { exitApp, setNavActiveId } from '@/core/common'
 import Text from '@/components/common/Text'
 import { useSettingValue } from '@/store/setting/hook'
+import { useDownloadListSummary } from '@/core/download/useDownloadedIds'
 
 const styles = createStyle({
   container: {
@@ -55,6 +56,16 @@ const styles = createStyle({
     paddingLeft: 20,
     // fontWeight: '500',
   },
+  badge: {
+    marginLeft: 10,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+    backgroundColor: '#E5484D',
+  },
 })
 
 const Header = () => {
@@ -72,14 +83,16 @@ const Header = () => {
 
 type IdType = InitState['navActiveId'] | 'nav_exit' | 'back_home'
 
-const MenuItem = ({ id, icon, onPress }: {
+const MenuItem = ({ id, icon, onPress, badge }: {
   id: IdType
   icon: string
   onPress: (id: IdType) => void
+  badge?: number
 }) => {
   const t = useI18n()
   const activeId = useNavActiveId()
   const theme = useTheme()
+  const badgeNode = badge && badge > 0 ? <View style={styles.badge}><Text size={10} color="#FFFFFF">{badge > 99 ? '99+' : badge}</Text></View> : null
 
   return activeId == id
     ? <View style={styles.menuItem}>
@@ -87,12 +100,14 @@ const MenuItem = ({ id, icon, onPress }: {
           <Icon name={icon} size={20} color={theme['c-primary-font-active']} />
         </View>
         <Text style={styles.text} color={theme['c-primary-font']}>{t(id)}</Text>
+        {badgeNode}
       </View>
     : <TouchableOpacity style={styles.menuItem} onPress={() => { onPress(id) }}>
         <View style={styles.iconContent}>
           <Icon name={icon} size={20} color={theme['c-font-label']} />
         </View>
         <Text style={styles.text}>{t(id)}</Text>
+        {badgeNode}
       </TouchableOpacity>
 }
 
@@ -101,6 +116,7 @@ export default memo(() => {
   // console.log('render drawer nav')
   const showBackBtn = useSettingValue('common.showBackBtn')
   const showExitBtn = useSettingValue('common.showExitBtn')
+  const downloadSummary = useDownloadListSummary()
 
   const handlePress = (id: IdType) => {
     switch (id) {
@@ -128,7 +144,7 @@ export default memo(() => {
       <Header />
       <ScrollView style={styles.menus}>
         <View style={styles.list}>
-          {NAV_MENUS.map(menu => <MenuItem key={menu.id} id={menu.id} icon={menu.icon} onPress={handlePress} />)}
+          {NAV_MENUS.map(menu => <MenuItem key={menu.id} id={menu.id} icon={menu.icon} onPress={handlePress} badge={menu.id === 'nav_download' ? downloadSummary.running || undefined : undefined} />)}
         </View>
       </ScrollView>
 

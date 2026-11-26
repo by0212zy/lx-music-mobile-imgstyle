@@ -63,6 +63,10 @@ export default async() => {
   void initSync(setting)
   bootLog('Sync inited.')
 
+  const { initDownload } = await import('@/core/download')
+  initDownload()
+  bootLog('Download inited.')
+
   // syncSetting()
 
   isInited ||= true

@@ -72,6 +72,8 @@ export default memo(({ componentId }: { componentId: string }) => {
   const programmaticRef = useRef(false)
   const firstPageEventRef = useRef(true)
   const syncModeRef = useRef(true)
+  // 标记本次切歌是否为「切上一首」，用于定位到上一首最后一页
+  const pendingPrevRef = useRef(false)
   // 翻页动画锁：快速连续点击时忽略后续请求，避免来回乱跳
   const navLockRef = useRef(false)
   const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -112,18 +114,22 @@ export default memo(({ componentId }: { componentId: string }) => {
     }
     if (programmaticRef.current) {
       programmaticRef.current = false
-    } else {
-      // 用户左右滑动：仅翻页，不同步播放进度
-      syncModeRef.current = false
+      return
     }
-  }, [])
+    // 用户左右滑动：仅翻页，不同步播放进度
+    // 若滑回当前播放歌词所在页，则恢复自动跟随；不在当前播放页则保持不跟随
+    const playingPage = clamp(Math.floor(Math.max(playLine, 0) / linesPerPage), 0, pages.length - 1)
+    syncModeRef.current = position === playingPage
+  }, [playLine, linesPerPage, pages.length])
 
   // 用户左右滑动到边界继续拖动时切歌
   const handlePageScroll = useCallback(({ nativeEvent }: PagerViewOnPageScrollEvent) => {
     const lastPage = pages.length - 1
-    if (nativeEvent.position === lastPage && nativeEvent.offset > 0.15) {
+    const { position, offset } = nativeEvent
+    // overdrag 时最后一页继续下滑 offset>0，第一页继续上滑 offset<0；阈值放低以便真机可触发
+    if (position === lastPage && offset > 0.03) {
       overDragRef.current = 1
-    } else if (nativeEvent.position === 0 && nativeEvent.offset < -0.15) {
+    } else if (position === 0 && offset < -0.03) {
       overDragRef.current = -1
     }
   }, [pages.length])
@@ -140,8 +146,13 @@ export default memo(({ componentId }: { componentId: string }) => {
     overDragRef.current = 0
     if (navLockRef.current) return
     lockNav()
-    if (dir > 0) void playNext()
-    else void playPrev()
+    if (dir > 0) {
+      void playNext()
+    } else {
+      // 滑动切上一首：定位到上一首最后一页
+      pendingPrevRef.current = true
+      void playPrev()
+    }
   }, [lockNav])
 
   // 播放进度变化时自动翻页（仅在同步模式下，且手动翻页动画期间不打扰）
@@ -159,7 +170,11 @@ export default memo(({ componentId }: { componentId: string }) => {
   useEffect(() => {
     syncModeRef.current = true
     setSelectedLine(null)
-    const target = clamp(Math.floor(Math.max(playLine, 0) / linesPerPage), 0, pages.length - 1)
+    // 切到上一首时定位到最后一页继续播放，而不是从开头
+    const target = pendingPrevRef.current
+      ? pages.length - 1
+      : clamp(Math.floor(Math.max(playLine, 0) / linesPerPage), 0, pages.length - 1)
+    pendingPrevRef.current = false
     pageRef.current = target
     setPage(target)
     programmaticRef.current = true
@@ -186,8 +201,13 @@ export default memo(({ componentId }: { componentId: string }) => {
     // 边界继续翻：下一首 / 上一首
     if ((delta > 0 && pageRef.current >= lastPage) || (delta < 0 && pageRef.current <= 0)) {
       lockNav()
-      if (delta > 0) void playNext()
-      else void playPrev()
+      if (delta > 0) {
+        void playNext()
+      } else {
+        // 切上一首：定位到上一首最后一页
+        pendingPrevRef.current = true
+        void playPrev()
+      }
       return
     }
     const target = clamp(pageRef.current + delta, 0, lastPage)

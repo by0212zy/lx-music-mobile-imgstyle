@@ -2,13 +2,6 @@ import songlistState, { type TagInfo, type ListDetailInfo, type ListInfo } from 
 import songlistActions from '@/store/songlist/action'
 import { deduplicationList, toNewMusicInfo } from '@/utils'
 import musicSdk from '@/utils/musicSdk'
-import settingState from '@/store/setting/state'
-
-// 图片样式版：缓存按「网络歌单请求数量」区分，设置变更后自动使用新值重新请求
-const getListLimitTag = () => {
-  const limit = settingState.setting['list.networkListLimit'] ?? 1000
-  return `__l${limit}`
-}
 
 
 interface DetailPageCache { data: ListDetailInfo, sourcePage: number }
@@ -101,10 +94,9 @@ export const getList = async(source: LX.OnlineSource, tabId: string, sortId: str
  * @returns
  */
 const getListDetailLimit = async(source: LX.OnlineSource, id: string, page: number): Promise<ListDetailInfo> => {
-  const limitTag = getListLimitTag()
-  const listKey = `sdetail__${source}__${id}${limitTag}`
-  const prevPageKey = `${listKey}__${page - 1}`
-  const tempListKey = `${listKey}__temp`
+  const listKey = `sdetail__${source}__${id}`
+  const prevPageKey = `sdetail__${source}__${id}__${page - 1}`
+  const tempListKey = `sdetail__${source}__${id}__temp`
 
   let listCache = cache.get(listKey) as LimitDetailCache
   if (!listCache) cache.set(listKey, listCache = new Map())
@@ -121,7 +113,7 @@ const getListDetailLimit = async(source: LX.OnlineSource, id: string, page: numb
     const tempList = listCache.get(tempListKey) as ListDetailInfo['list']
     if (tempList) {
       listCache.delete(tempListKey)
-      listCache.set(`${listKey}__${p}`, {
+      listCache.set(`sdetail__${source}__${id}__${p}`, {
         data: {
           ...result,
           list: [...tempList, ...result.list.splice(0, LIST_LOAD_LIMIT - tempList.length)],
@@ -138,7 +130,7 @@ const getListDetailLimit = async(source: LX.OnlineSource, id: string, page: numb
         listCache.set(tempListKey, result.list.splice(0, LIST_LOAD_LIMIT))
         break
       }
-      listCache.set(`${listKey}__${p}`, {
+      listCache.set(`sdetail__${source}__${id}__${p}`, {
         data: {
           ...result,
           list: result.list.splice(0, LIST_LOAD_LIMIT),
@@ -149,7 +141,7 @@ const getListDetailLimit = async(source: LX.OnlineSource, id: string, page: numb
       })
       p++
     } while (result.list.length > 0)
-    return (listCache.get(`${listKey}__${page}`) as DetailPageCache).data
+    return (listCache.get(`sdetail__${source}__${id}__${page}`) as DetailPageCache).data
   }) ?? Promise.reject(new Error('source not found'))
 }
 
@@ -179,9 +171,8 @@ export const clearListDetail = () => {
  * @returns
  */
 export const getListDetail = async(id: string, source: LX.OnlineSource, page: number, isRefresh = false): Promise<ListDetailInfo> => {
-  const limitTag = getListLimitTag()
-  const listKey = `sdetail__${source}__${id}${limitTag}`
-  const pageKey = `${listKey}__${page}`
+  const listKey = `sdetail__${source}__${id}`
+  const pageKey = `sdetail__${source}__${id}__${page}`
 
   let listCache = cache.get(listKey) as LimitDetailCache
   if (!listCache || isRefresh) {
@@ -203,15 +194,14 @@ export const getListDetail = async(id: string, source: LX.OnlineSource, page: nu
  */
 export const getListDetailAll = async(source: LX.OnlineSource, id: string, isRefresh = false): Promise<LX.Music.MusicInfoOnline[]> => {
   // console.log(tabId)
-  const limitTag = getListLimitTag()
-  const listKey = `sdetail__${source}__${id}${limitTag}`
+  const listKey = `sdetail__${source}__${id}`
   let listCache = cache.get(listKey) as LimitDetailCache
   if (!listCache || isRefresh) {
     cache.set(listKey, listCache = new Map())
   }
 
   const loadData = async(page: number): Promise<ListDetailInfo> => {
-    const pageKey = `${listKey}__${page}`
+    const pageKey = `sdetail__${source}__${id}__${page}`
     let pageCache = listCache.get(pageKey) as DetailPageCache
     if (pageCache) return pageCache.data
     return getListDetailLimit(source, id, page)

@@ -4,6 +4,7 @@ import Menu, { type Menus, type MenuType, type Position } from '@/components/com
 import { hasDislike } from '@/core/dislikeList'
 import { existsFile } from '@/utils/fs'
 import { hasMusicUrlByMusic } from '@/utils/data'
+import { isDownloaded, addDownloadTasks } from '@/core/download'
 
 export interface SelectInfo {
   musicInfo: LX.Music.MusicInfo
@@ -71,7 +72,7 @@ export default forwardRef<ListMenuType, ListMenuProps>((props, ref) => {
     const menu = [
       { action: 'play', label: t('play') },
       { action: 'playLater', label: t('play_later') },
-      // { action: 'download', label: '下载' },
+      ...(isLocal ? [] : [{ action: 'download', label: '下载', disabled: true }]),
       { action: 'add', label: t('add_to') },
       { action: 'move', label: t('move_to') },
       { action: 'changePosition', label: t('change_position') },
@@ -85,9 +86,17 @@ export default forwardRef<ListMenuType, ListMenuProps>((props, ref) => {
     ]
     if (isLocal) menu.splice(5, 0, { action: 'editMetadata', disabled: !edit_metadata, label: t('edit_metadata') })
     setMenus(menu)
-    void Promise.all([isLocal ? hasEditMetadata(musicInfo) : Promise.resolve(false), hasUrlCache(musicInfo)]).then(([_edit_metadata, _has_url_cache]) => {
+    void Promise.all([isLocal ? hasEditMetadata(musicInfo) : Promise.resolve(false), hasUrlCache(musicInfo), isLocal ? Promise.resolve(false) : isDownloaded(musicInfo)]).then(([_edit_metadata, _has_url_cache, downloaded]) => {
       // console.log(_edit_metadata)
       let isUpdated = false
+      if (!isLocal) {
+        const downloadIndex = menu.findIndex(m => m.action == 'download')
+        if (downloadIndex > -1) {
+          menu[downloadIndex].label = downloaded ? '已下载' : '下载'
+          menu[downloadIndex].disabled = downloaded
+          isUpdated = true
+        }
+      }
       if (edit_metadata != _edit_metadata) {
         edit_metadata = _edit_metadata
         menu[menu.findIndex(m => m.action == 'editMetadata')].disabled = !edit_metadata
@@ -113,6 +122,12 @@ export default forwardRef<ListMenuType, ListMenuProps>((props, ref) => {
         props.onPlayLater(selectInfo)
 
         break
+      case 'download': {
+        const list = selectInfo.single ? [selectInfo.musicInfo] : selectInfo.selectedList
+        const onlineList = list.filter(m => m.source != 'local')
+        if (onlineList.length) void addDownloadTasks(onlineList)
+        break
+      }
       case 'add':
         props.onAdd(selectInfo)
         // isMoveRef.current = false

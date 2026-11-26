@@ -165,6 +165,7 @@
   "name": "Title: {name}",
   "nav_exit": "Exit App",
   "nav_love": "Your Library",
+  "nav_download": "Downloads",
   "nav_search": "Search",
   "nav_setting": "Settings",
   "nav_songlist": "Playlists",

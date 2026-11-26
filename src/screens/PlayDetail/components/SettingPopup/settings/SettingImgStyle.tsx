@@ -81,37 +81,6 @@ export const SettingLyricBottomBlankLines = () => {
   )
 }
 
-export const SettingNetworkListLimit = () => {
-  const theme = useTheme()
-  const limit = useSettingValue('list.networkListLimit') ?? 1000
-  const options = [500, 1000, 1500, 2000, 3000, 5000]
-
-  return (
-    <View style={styles.container}>
-      <Text>网络歌单请求歌曲数</Text>
-      <View style={styles.list}>
-        {options.map(item => (
-          <TouchableOpacity
-            key={item}
-            activeOpacity={0.6}
-            style={{
-              paddingHorizontal: 14,
-              paddingVertical: 7,
-              borderRadius: 8,
-              marginRight: 8,
-              marginTop: 4,
-              backgroundColor: limit === item ? theme['c-primary'] : 'rgba(128,128,128,0.18)',
-            }}
-            onPress={() => { updateSetting({ 'list.networkListLimit': item }) }}
-          >
-            <Text size={13} color={limit === item ? '#FFFFFF' : theme['c-font']}>{item}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
-  )
-}
-
 export const SettingLyricLineSpacing = () => {
   const theme = useTheme()
   const lineSpacing = useSettingValue('playDetail.lyricLineSpacing') ?? 10

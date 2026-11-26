@@ -9,6 +9,7 @@ import { useTheme } from '@/store/theme/hook'
 import { scaleSizeH } from '@/utils/pixelRatio'
 import { LIST_ITEM_HEIGHT } from '@/config/constant'
 import { createStyle, type RowInfo } from '@/utils/tools'
+import { useDownloadedIds } from '@/core/download/useDownloadedIds'
 
 export const ITEM_HEIGHT = scaleSizeH(LIST_ITEM_HEIGHT)
 
@@ -42,6 +43,8 @@ export default memo(({ item, index, showSource, onPress, onLongPress, onShowMenu
   isShowInterval: boolean
 }) => {
   const theme = useTheme()
+  const downloadedIds = useDownloadedIds()
+  const isDownloadedItem = downloadedIds.has(item.id)
 
   const isSelected = selectedList.includes(item)
 
@@ -67,6 +70,7 @@ export default memo(({ item, index, showSource, onPress, onLongPress, onShowMenu
           <View style={styles.listItemSingle}>
             { tagInfo.type ? <Badge type={tagInfo.type}>{tagInfo.text}</Badge> : null }
             { showSource ? <Badge type="tertiary">{item.source}</Badge> : null }
+            { isDownloadedItem ? <Text size={9} color={theme['c-primary']} style={styles.downloadedBadge}>已下载</Text> : null }
             <Text style={styles.listItemSingleText} size={11} color={theme['c-500']} numberOfLines={1}>{singer}</Text>
           </View>
         </View>
@@ -138,6 +142,11 @@ const styles = createStyle({
   listItemTimeLabel: {
     marginRight: 5,
     fontWeight: '400',
+  },
+  downloadedBadge: {
+    marginRight: 5,
+    alignSelf: 'center',
+    fontWeight: '500',
   },
   listItemSingleText: {
     // fontSize: 13,

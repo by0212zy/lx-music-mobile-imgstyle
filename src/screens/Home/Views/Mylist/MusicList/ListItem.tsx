@@ -9,6 +9,7 @@ import { useAssertApiSupport } from '@/store/common/hook'
 import { scaleSizeH } from '@/utils/pixelRatio'
 import Text from '@/components/common/Text'
 import Badge from '@/components/common/Badge'
+import { useDownloadedIds } from '@/core/download/useDownloadedIds'
 
 export const ITEM_HEIGHT = scaleSizeH(LIST_ITEM_HEIGHT)
 
@@ -26,6 +27,8 @@ export default memo(({ item, index, activeIndex, onPress, onShowMenu, onLongPres
   isShowInterval: boolean
 }) => {
   const theme = useTheme()
+  const downloadedIds = useDownloadedIds()
+  const isDownloadedItem = downloadedIds.has(item.id)
 
   const isSelected = selectedList.includes(item)
   // console.log(item.name, selectedList, selectedList.includes(item))
@@ -57,6 +60,11 @@ export default memo(({ item, index, activeIndex, onPress, onShowMenu, onLongPres
           {/* </View> */}
           <View style={styles.listItemSingle}>
             <Badge>{item.source.toUpperCase()}</Badge>
+            {
+              isDownloadedItem
+                ? <Text size={9} color={theme['c-primary']} style={styles.downloadedBadge}>已下载</Text>
+                : null
+            }
             <Text style={styles.listItemSingleText} size={11} color={active ? theme['c-primary-alpha-200'] : theme['c-500']} numberOfLines={1}>
               {singer}
             </Text>
@@ -127,6 +135,11 @@ const styles = createStyle({
     paddingTop: 3,
     flexDirection: 'row',
     // alignItems: 'flex-end',
+  },
+  downloadedBadge: {
+    marginRight: 5,
+    alignSelf: 'center',
+    fontWeight: '500',
   },
   listItemSingleText: {
     // backgroundColor: 'rgba(0,0,0,0.2)',

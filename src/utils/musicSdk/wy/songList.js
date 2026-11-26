@@ -9,7 +9,6 @@ import { formatPlayTime, sizeFormate, dateFormat, formatPlayCount } from '../../
 import musicDetailApi from './musicDetail'
 import { eapiRequest } from './utils/index'
 import { formatSingerName } from '../utils'
-import settingState from '@/store/setting/state'
 
 export default {
   _requestObj_tags: null,
@@ -70,13 +69,6 @@ export default {
   async getListDetail(rawId, page, tryNum = 0) { // 获取歌曲列表内的音乐
     if (tryNum > 2) return Promise.reject(new Error('try max num'))
 
-    // 图片样式版：网络歌单请求歌曲数量可由设置调整（默认 1000，突破原上限）
-    let limit = 1000
-    try {
-      const configured = settingState.setting['list.networkListLimit']
-      if (configured && configured > 0) limit = configured
-    } catch (err) { /* 设置尚未初始化时使用默认 1000 */ }
-
     const { id, cookie } = await this.getListId(rawId)
     if (cookie) this.cookie = cookie
 
@@ -100,7 +92,8 @@ export default {
     })
     const { statusCode, body } = await requestObj_listDetail.promise
     if (statusCode !== 200 || body.code !== this.successCode) return this.getListDetail(id, page, ++tryNum)
-    const rangeStart = (page - 1) * limit
+    let limit = 1000
+    let rangeStart = (page - 1) * limit
     // console.log(body)
     let list
     if (body.playlist.trackIds.length == body.privileges.length) {

@@ -15,6 +15,7 @@ import ListMusicSearch, { type ListMusicSearchType } from './ListMusicSearch'
 import MusicPositionModal, { type MusicPositionModalType } from './MusicPositionModal'
 import MetadataEditModal, { type MetadataEditType, type MetadataEditProps } from '@/components/MetadataEditModal'
 import MusicToggleModal, { type MusicToggleModalType } from './MusicToggleModal'
+import { addDownloadTasks } from '@/core/download'
 
 
 export default () => {
@@ -128,6 +129,11 @@ export default () => {
           onSwitchMode={hancelSwitchSelectMode}
           onSelectAll={isAll => listRef.current?.selectAll(isAll)}
           onExitSelectMode={hancelExitSelect}
+          onBatchDownload={() => {
+            const selected = listRef.current?.getSelectedList() ?? []
+            const online = selected.filter(m => m.source != 'local')
+            if (online.length) void addDownloadTasks(online)
+          }}
         />
         <ListSearchBar
           ref={listSearchBarRef}

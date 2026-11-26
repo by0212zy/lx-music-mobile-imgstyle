@@ -37,6 +37,12 @@ export const getMusicUrl = async({
   } else if (musicInfo.source == 'local') {
     return getLocalMusicUrl({ musicInfo, isRefresh, onToggleSource, allowToggleSource })
   } else {
+    // 图片样式版：已下载的歌曲优先读取本地文件播放
+    if (!isRefresh) {
+      const { getDownloadedFilePath } = await import('@/core/download')
+      const localPath = await getDownloadedFilePath(musicInfo)
+      if (localPath) return localPath
+    }
     return getOnlineMusicUrl({ musicInfo, isRefresh, quality, onToggleSource, allowToggleSource })
   }
 }
@@ -75,6 +81,21 @@ export const getLyricInfo = async({
   } else if (musicInfo.source == 'local') {
     return getLocalLyricInfo({ musicInfo, isRefresh, onToggleSource })
   } else {
+    // 图片样式版：优先读取下载时保存的歌词文件
+    if (!isRefresh) {
+      const { getDownloadItem } = await import('@/core/download')
+      const item = getDownloadItem(musicInfo.id)
+      if (item?.status === 'completed') {
+        const { readFile, existsFile } = await import('@/utils/fs')
+        if (await existsFile(item.lyricPath).catch(() => false)) {
+          const lyric = await readFile(item.lyricPath, 'utf8').catch(() => '')
+          if (lyric) {
+            const info: LX.Player.LyricInfo = { lyric, tlyric: null, rawlrcInfo: { lyric } }
+            return info
+          }
+        }
+      }
+    }
     return getOnlineLyricInfo({ musicInfo, isRefresh, onToggleSource })
   }
 }
