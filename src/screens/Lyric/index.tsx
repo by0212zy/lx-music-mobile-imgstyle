@@ -142,9 +142,11 @@ export default memo(({ componentId }: { componentId: string }) => {
   musicIdRef.current = musicInfo.id
 
   // 切上一首 seek 竞态：歌词异步就绪后我们 seek 到末页时间，但播放器 URL 加载完成后
-  // handlePlayMusic 会用其捕获的旧 time（往往是 0）再 seekTo 覆盖。
-  // 策略：记录目标时间，在守卫窗口内每次进度被拉回开头（<1s）就再次 seek，直到进度追上目标。
-  const switchSeekRef = useRef<{ id: string | null, time: number, until: number } | null>(null)
+  // handlePlayMusic 会用其捕获的旧 time（往往是 0）再 seekTo 覆盖，且这一步是异步的、
+  // 可能远晚于我们的 seek。绝不能因为 nowPlayTime（被 setProgress 同步改写的 UI 状态）
+  // 显示"追上目标"就清除守卫——那是假象，播放器真实 seek 尚未完成。
+  // 策略：整个守卫窗口内持续守护，只要真实进度落后目标就重新 seek，直到窗口结束。
+  const switchSeekRef = useRef<{ id: string | null, time: number, until: number, lastSeek: number } | null>(null)
   const nowPlayTimeRef = useRef(nowPlayTime)
   nowPlayTimeRef.current = nowPlayTime
 
@@ -152,13 +154,17 @@ export default memo(({ componentId }: { componentId: string }) => {
     switchSeekRef.current = null
   }, [])
 
-  // 立即 seek 到目标，并开启一个约 6 秒的守卫窗口（由下方 effect 每 250ms 检查）
+  // 立即 seek 到目标，并开启守卫窗口（由下方 effect 每 250ms 持续纠正）
+  // 窗口需足够长以覆盖慢网络下 handlePlayMusic 的迟到 seekTo（10 秒）
   const scheduleSwitchSeek = useCallback((targetId: string | null, timeSec: number) => {
-    switchSeekRef.current = { id: targetId, time: timeSec, until: Date.now() + 6000 }
+    switchSeekRef.current = { id: targetId, time: timeSec, until: Date.now() + 10000, lastSeek: 0 }
     global.app_event.setProgress(timeSec)
   }, [])
 
-  // 守卫：目标进度被播放器覆盖回开头时重新 seek；进度已追上目标或超时则结束
+  // 守卫：窗口内只要真实进度落后目标（被播放器 seekTo(旧进度) 拉回）就重新 seek。
+  // 不因"进度追上"而提前清除——那可能只是 setProgress 的同步假象，迟到的播放器覆盖会
+  // 在我们清除后再把进度拉回开头，这正是"歌词在末页但播放从开头"的根因。
+  // 仅在超时 / 歌曲再切换 / 用户主动操作（cancelSwitchSeek）时结束。
   useEffect(() => {
     const timer = setInterval(() => {
       const s = switchSeekRef.current
@@ -168,13 +174,11 @@ export default memo(({ componentId }: { componentId: string }) => {
         return
       }
       const cur = nowPlayTimeRef.current
-      if (cur >= s.time - 0.5) {
-        // 已追上目标进度，守卫完成
-        switchSeekRef.current = null
-        return
+      // 进度落后目标即重新 seek；300ms 节流避免 seek 尚未生效时重复调用
+      if (cur < s.time - 0.8 && Date.now() - s.lastSeek > 300) {
+        s.lastSeek = Date.now()
+        global.app_event.setProgress(s.time)
       }
-      // 进度被拉回开头（含刚切歌的 0），重新 seek 守住末页起点
-      if (cur < 1) global.app_event.setProgress(s.time)
     }, 250)
     return () => { clearInterval(timer) }
   }, [])
@@ -442,10 +446,8 @@ export default memo(({ componentId }: { componentId: string }) => {
               <Text size={11} color="#9E96B5" numberOfLines={1} style={styles.headerTitleText}>{musicInfo.singer}</Text>
             </View>
             <View style={styles.orderBadge}>
-              <View style={styles.orderCurrent}>
-                <Text size={12} color="#FFFFFF" style={styles.orderCurrentText}>第 {playOrder.current} 首</Text>
-              </View>
-              <Text size={11} color="#9E96B5" style={styles.orderTotal}>共 {playOrder.total} 首</Text>
+              <Text size={12} color="#FFFFFF" style={styles.orderCurrentText}>第 {playOrder.current} 首</Text>
+              <Text size={11} color="rgba(255,255,255,0.82)" style={styles.orderTotal}>共 {playOrder.total} 首</Text>
             </View>
           </View>
         </View>
@@ -500,7 +502,7 @@ const styles = createStyle({
   header: {
     height: 58,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingHorizontal: 16,
     gap: 10,
   },
@@ -514,7 +516,9 @@ const styles = createStyle({
   },
   headerTitle: {
     flex: 1,
-    justifyContent: 'center',
+    minWidth: 0,
+    justifyContent: 'flex-start',
+    paddingTop: 1,
   },
   headerTitleText: {
     textAlign: 'left',
@@ -526,19 +530,21 @@ const styles = createStyle({
   orderBadge: {
     flexDirection: 'column',
     alignItems: 'flex-end',
-    gap: 2,
-  },
-  orderCurrent: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 12,
+    justifyContent: 'center',
+    gap: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 14,
     backgroundColor: '#2979FF',
+    zIndex: 2,
   },
   orderCurrentText: {
     fontWeight: 'bold',
+    textAlign: 'right',
   },
   orderTotal: {
     fontWeight: 'bold',
+    textAlign: 'right',
   },
   pager: {
     flex: 1,
