@@ -131,6 +131,8 @@ export default memo(({ componentId }: { componentId: string }) => {
   const navLockRef = useRef(false)
   const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingSwitchRef = useRef<PendingSwitch | null>(null)
+  // 首次装载是否已定位完成：未完成前自动跟随必须门控，防止与首次定位打架造成进入乱跳
+  const didInitRef = useRef(false)
   // 切歌定位锚定：prev 切到末页后，播放进度往往被播放器归零（playLine=0），
   // 若不锚定，自动跟随会把页面从末页拉回第一页。锚定直到播放进度追上锚定页或用户主动操作。
   const anchorRef = useRef(false)
@@ -247,14 +249,29 @@ export default memo(({ componentId }: { componentId: string }) => {
     }
   }, [slides, realPageCount, pageForLine, requestSwitch])
 
+  // 由播放进度时间算出当前歌词行索引（两个 effect 共用，保证数据源一致）
+  const lineIndexForTime = useCallback((timeSec: number) => {
+    const ms = timeSec * 1000
+    let idx = 0
+    for (let i = 0; i < lyricLines.length; i++) {
+      if ((lyricLines[i]?.time ?? 0) <= ms) idx = i
+      else break
+    }
+    return idx
+  }, [lyricLines])
+
   // 播放进度变化自动跟随（仅在同步模式、无切歌事务时）
+  // 关键：目标行一律用播放器进度的权威时间 nowPlayTime 计算，不依赖 useLrcPlay 的 playLine——
+  // 歌词刚 setLyric 时 onSetLyric 会先把 playLine 通知为 -1/0 中间态，若据此跟随会把页面拉回首页，
+  // 与首次定位打架造成「进入歌词页文字乱跳」。首次装载完成前（didInitRef=false）也不跟随。
   useEffect(() => {
+    if (!didInitRef.current) return
     if (pendingSwitchRef.current) return
     if (navLockRef.current) return
-    const target = pageForLine(playLine)
+    const target = pageForLine(lineIndexForTime(nowPlayTime))
     if (anchorRef.current) {
       // 锚定中：只有播放进度真正推进到锚定页，才解除锚定恢复跟随；
-      // 否则忽略 playLine（切歌后它常被播放器重置为 0，在首页），页面稳稳停在锚定页。
+      // 否则忽略中间态进度（切歌后常被重置为 0，在首页），页面稳稳停在锚定页。
       if (target === pageRef.current) anchorRef.current = false
       else return
     }
@@ -266,23 +283,25 @@ export default memo(({ componentId }: { componentId: string }) => {
     pageRef.current = target
     setPage(target)
     pagerRef.current?.setPage(target + SENTINEL)
-  }, [playLine, pageForLine])
+  }, [nowPlayTime, pageForLine, lineIndexForTime])
 
   // 首次装载：歌词就绪后重建 PagerView 定位到当前播放行
-  const didInitRef = useRef(false)
   useEffect(() => {
     if (didInitRef.current) return
     if (!lyricLines.length) return
     if (pendingSwitchRef.current) return
     didInitRef.current = true
-    const target = clamp(pageForLine(playLineRef.current), 0, Math.max(0, realPageCount - 1))
+    // 用真实播放进度时间定位，而非 playLine（歌词刚就绪时它可能仍是 -1/0 中间态，
+    // 会导致首次定位到首页、随后再跳到播放页的乱跳）。
+    const lineIdx = lineIndexForTime(nowPlayTimeRef.current)
+    const target = clamp(pageForLine(lineIdx), 0, Math.max(0, realPageCount - 1))
     pageRef.current = target
     setPage(target)
     dragAtRef.current = 0
     setInitialPage(target + SENTINEL)
     setPagerKey(k => k + 1)
     setPagerReady(true)
-  }, [lyricLines, realPageCount, pageForLine])
+  }, [lyricLines, realPageCount, pageForLine, lineIndexForTime])
 
   // 切歌定位：musicId 变化 + 新歌词就绪后，重建 PagerView 一次性定位
   useEffect(() => {
@@ -419,12 +438,12 @@ export default memo(({ componentId }: { componentId: string }) => {
               <Icon name="chevron-left" color="#FFFFFF" size={20} />
             </TouchableOpacity>
             <View style={styles.headerTitle}>
-              <Text size={15} color="#FFFFFF" numberOfLines={1} style={styles.headerSongName}>{musicInfo.name}</Text>
+              <Text size={17} color="#FFFFFF" numberOfLines={1} style={styles.headerSongName}>{musicInfo.name}</Text>
               <Text size={11} color="#9E96B5" numberOfLines={1} style={styles.headerTitleText}>{musicInfo.singer}</Text>
             </View>
             <View style={styles.orderBadge}>
               <View style={styles.orderCurrent}>
-                <Text size={11} color="#FFFFFF" style={styles.orderCurrentText}>第 {playOrder.current} 首</Text>
+                <Text size={12} color="#FFFFFF" style={styles.orderCurrentText}>第 {playOrder.current} 首</Text>
               </View>
               <Text size={11} color="#9E96B5" style={styles.orderTotal}>共 {playOrder.total} 首</Text>
             </View>
@@ -502,24 +521,24 @@ const styles = createStyle({
   },
   headerSongName: {
     textAlign: 'left',
-    fontWeight: '700',
+    fontWeight: 'bold',
   },
   orderBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 2,
   },
   orderCurrent: {
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 3,
     borderRadius: 12,
     backgroundColor: '#2979FF',
   },
   orderCurrentText: {
-    fontWeight: '700',
+    fontWeight: 'bold',
   },
   orderTotal: {
-    fontWeight: '500',
+    fontWeight: 'bold',
   },
   pager: {
     flex: 1,
@@ -561,6 +580,7 @@ const styles = createStyle({
   pageIndicator: {
     textAlign: 'center',
     marginBottom: 12,
+    fontWeight: 'bold',
   },
   controls: {
     flexDirection: 'row',
