@@ -81,10 +81,7 @@ export default memo(({ componentId }: { componentId: string }) => {
           </TouchableOpacity>
           <View style={styles.headerSpacer} />
           <View style={styles.orderBadge}>
-            <View style={styles.orderCurrent}>
-              <Text size={11} color="#FFFFFF" style={styles.orderCurrentText}>第 {playOrder.current} 首</Text>
-            </View>
-            <Text size={11} color="#9E96B5" style={styles.orderTotal}>共 {playOrder.total} 首</Text>
+            <Text size={12} color="#FFFFFF" style={styles.orderCurrentText}>{playOrder.current} / {playOrder.total}</Text>
           </View>
           <TouchableOpacity style={styles.gainBtn} activeOpacity={0.6} onPress={() => settingPopupRef.current?.show()}>
             <Icon name="setting" color="#FFFFFF" size={16} />
@@ -210,21 +207,13 @@ const styles = createStyle({
     flex: 1,
   },
   orderBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  orderCurrent: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 11,
     paddingVertical: 5,
     borderRadius: 12,
     backgroundColor: '#2979FF',
   },
   orderCurrentText: {
-    fontWeight: '700',
-  },
-  orderTotal: {
-    fontWeight: '500',
+    fontWeight: 'bold',
   },
   gainBtn: {
     flexDirection: 'row',

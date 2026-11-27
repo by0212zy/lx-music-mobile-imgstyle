@@ -12,7 +12,7 @@ import { useStatusbarHeight } from '@/store/common/hook'
 import { useSettingValue } from '@/store/setting/hook'
 import { usePlayerMusicInfo, useIsPlay, usePlayInfo, usePlayMusicInfo, useProgress } from '@/store/player/hook'
 import { useWindowSize } from '@/utils/hooks'
-import { useLrcPlay, useLrcSet } from '@/plugins/lyric'
+import { useLrcSet } from '@/plugins/lyric'
 import { playNext, playPrev, togglePlay } from '@/core/player/player'
 import { getList } from '@/core/player/playInfo'
 import { pop } from '@/navigation'
@@ -56,7 +56,6 @@ export default memo(({ componentId }: { componentId: string }) => {
   const playInfo = usePlayInfo()
   const playMusicInfo = usePlayMusicInfo()
   const lyricLines = useLrcSet()
-  const { line: playLine } = useLrcPlay()
   const { width, height } = useWindowSize()
   const statusBarHeight = useStatusbarHeight()
   const fontWeight = useSettingValue('playDetail.lyricFontWeight') ?? 800
@@ -123,6 +122,21 @@ export default memo(({ componentId }: { componentId: string }) => {
     }
     return 0
   }, [realPages, lyricLines.length])
+
+  // 由播放进度时间算出当前歌词行索引（高亮与翻页共用，保证数据源一致）
+  const lineIndexForTime = useCallback((timeSec: number) => {
+    const ms = timeSec * 1000
+    let idx = 0
+    for (let i = 0; i < lyricLines.length; i++) {
+      if ((lyricLines[i]?.time ?? 0) <= ms) idx = i
+      else break
+    }
+    return idx
+  }, [lyricLines])
+
+  // 当前播放行统一由「播放器进度时间」推导，高亮标识符与自动翻页共用这一份数据，
+  // 彻底消除 lrc 解析器 playLine 与播放器进度不同步造成的「高亮停在上一页末行」。
+  const playLine = lineIndexForTime(nowPlayTime)
 
   const pagerRef = useRef<PagerView>(null)
   const pageRef = useRef(0)
@@ -253,21 +267,9 @@ export default memo(({ componentId }: { componentId: string }) => {
     }
   }, [slides, realPageCount, pageForLine, requestSwitch])
 
-  // 由播放进度时间算出当前歌词行索引（两个 effect 共用，保证数据源一致）
-  const lineIndexForTime = useCallback((timeSec: number) => {
-    const ms = timeSec * 1000
-    let idx = 0
-    for (let i = 0; i < lyricLines.length; i++) {
-      if ((lyricLines[i]?.time ?? 0) <= ms) idx = i
-      else break
-    }
-    return idx
-  }, [lyricLines])
-
   // 播放进度变化自动跟随（仅在同步模式、无切歌事务时）
-  // 关键：目标行一律用播放器进度的权威时间 nowPlayTime 计算，不依赖 useLrcPlay 的 playLine——
-  // 歌词刚 setLyric 时 onSetLyric 会先把 playLine 通知为 -1/0 中间态，若据此跟随会把页面拉回首页，
-  // 与首次定位打架造成「进入歌词页文字乱跳」。首次装载完成前（didInitRef=false）也不跟随。
+  // 目标行与高亮标识符统一由 nowPlayTime 推导的 playLine 计算，二者永不脱节；
+  // 首次装载完成前（didInitRef=false）也不跟随。
   useEffect(() => {
     if (!didInitRef.current) return
     if (pendingSwitchRef.current) return
@@ -446,8 +448,7 @@ export default memo(({ componentId }: { componentId: string }) => {
               <Text size={11} color="#9E96B5" numberOfLines={1} style={styles.headerTitleText}>{musicInfo.singer}</Text>
             </View>
             <View style={styles.orderBadge}>
-              <Text size={12} color="#FFFFFF" style={styles.orderCurrentText}>第 {playOrder.current} 首</Text>
-              <Text size={11} color="rgba(255,255,255,0.82)" style={styles.orderTotal}>共 {playOrder.total} 首</Text>
+              <Text size={12} color="#FFFFFF" style={styles.orderText}>{playOrder.current} / {playOrder.total}</Text>
             </View>
           </View>
         </View>
@@ -528,21 +529,16 @@ const styles = createStyle({
     fontWeight: 'bold',
   },
   orderBadge: {
-    flexDirection: 'column',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    gap: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 14,
+    // 单行「1333 / 2090」，下移到作者那一行（第二行），不遮挡上方歌名
+    marginTop: 16,
+    paddingHorizontal: 11,
+    paddingVertical: 3,
+    borderRadius: 10,
     backgroundColor: '#2979FF',
+    flexShrink: 0,
     zIndex: 2,
   },
-  orderCurrentText: {
-    fontWeight: 'bold',
-    textAlign: 'right',
-  },
-  orderTotal: {
+  orderText: {
     fontWeight: 'bold',
     textAlign: 'right',
   },
