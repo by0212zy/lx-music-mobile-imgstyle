@@ -98,11 +98,14 @@ export default () => {
     updateTimeout = null
   }
   const startUpdateTimeout = () => {
-    if (!isScreenOn) return
     clearUpdateTimeout()
+    // 息屏时降频轮询（2 秒）以持续记录已听进度；亮屏时按播放速率正常轮询
+    const interval = isScreenOn
+      ? 1000 / settingState.setting['player.playbackRate']
+      : 2000
     updateTimeout = BackgroundTimer.setInterval(() => {
       getCurrentTime()
-    }, 1000 / settingState.setting['player.playbackRate'])
+    }, interval)
     getCurrentTime()
   }
 
@@ -203,9 +206,11 @@ export default () => {
 
   const handleScreenStateChanged: Parameters<typeof onScreenStateChange>[0] = (state) => {
     isScreenOn = state == 'ON'
-    if (isScreenOn) {
-      if (playerState.isPlay) startUpdateTimeout()
-    } else clearUpdateTimeout()
+    // 息屏时不停止轮询，而是降频继续记录已听进度（getCurrentTime 内部记录，不受亮屏影响）
+    if (playerState.isPlay) startUpdateTimeout()
+    else if (!isScreenOn) clearUpdateTimeout()
+    // 息屏瞬间立即落盘一次，避免节流窗口内丢失
+    if (!isScreenOn) flushListenProgress()
   }
 
   // 修复在某些设备上屏幕状态改变事件未触发导致的进度条未更新的问题

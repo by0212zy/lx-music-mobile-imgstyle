@@ -68,7 +68,7 @@ export default memo(({ item, index, showSource, onPress, onLongPress, onShowMenu
       <TouchableOpacity style={styles.listItemLeft} onPress={() => { onPress(item, index) }} onLongPress={() => { onLongPress(item, index) }}>
         <Text style={styles.sn} size={13} color={theme['c-300']}>{index + 1}</Text>
         <View style={styles.itemInfo}>
-          <Text numberOfLines={1}>{item.name}</Text>
+          <Text numberOfLines={1} style={styles.musicName}>{item.name}</Text>
           <View style={styles.listItemSingle}>
             { tagInfo.type ? <Badge type={tagInfo.type}>{tagInfo.text}</Badge> : null }
             { showSource ? <Badge type="tertiary">{item.source}</Badge> : null }
@@ -78,9 +78,9 @@ export default memo(({ item, index, showSource, onPress, onLongPress, onShowMenu
           { listenPercent > 0
             ? <View style={styles.listenProgress}>
                 <View style={styles.listenTrack}>
-                  <View style={[styles.listenFill, { width: `${listenPercent}%` }]} />
+                  <View style={[styles.listenFill, { width: `${listenPercent}%`, backgroundColor: theme['c-primary'] }]} />
                 </View>
-                <Text size={11} color={theme['c-primary']} style={styles.listenPercentText}>{listenPercent}%</Text>
+                <Text size={10} color={theme['c-primary']} style={styles.listenPercentText}>{listenPercent}%</Text>
               </View>
             : null }
         </View>
@@ -110,9 +110,14 @@ const styles = createStyle({
     flexDirection: 'row',
     flexWrap: 'nowrap',
     // paddingLeft: 10,
-    paddingRight: 2,
+    paddingRight: 12,
     alignItems: 'center',
-    // borderBottomWidth: BorderWidths.normal,
+    borderBottomWidth: 0.4,
+    borderBottomColor: 'rgba(150,150,170,0.13)',
+  },
+  musicName: {
+    fontWeight: '500',
+    letterSpacing: 0.2,
   },
   listItemLeft: {
     flex: 1,
@@ -165,16 +170,15 @@ const styles = createStyle({
     gap: 6,
   },
   listenTrack: {
-    width: 72,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    width: 76,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(150,150,170,0.28)',
     overflow: 'hidden',
   },
   listenFill: {
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: '#2979FF',
+    height: 4,
+    borderRadius: 2,
   },
   listenPercentText: {
     fontWeight: '500',

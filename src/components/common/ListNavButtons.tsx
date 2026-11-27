@@ -31,20 +31,20 @@ const ListNavButtons = memo(({ onScrollTop, onScrollBottom, onLocatePlaying }: P
 const styles = createStyle({
   container: {
     position: 'absolute',
-    right: 40,
+    right: 36,
     bottom: 20,
     zIndex: 11,
-    gap: 10,
+    gap: 9,
   },
   btn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(40,40,50,0.82)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(150,150,170,0.22)',
+    borderWidth: 0.6,
+    borderColor: 'rgba(255,255,255,0.14)',
   },
   iconUp: {
     transform: [{ rotate: '90deg' }],

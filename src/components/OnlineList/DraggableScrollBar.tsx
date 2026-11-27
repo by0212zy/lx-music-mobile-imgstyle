@@ -18,12 +18,13 @@ export interface DraggableScrollBarType {
   onScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => void
 }
 
-// 可拖动滚动指示条：替代系统默认过小的滚动条，可用手指拖动快速滚动长列表
+// 可拖动滚动指示条：细轨道 + 胶囊滑块，拖动时放大高亮，整条轨道均为触摸热区
 const DraggableScrollBar = memo(forwardRef<DraggableScrollBarType, Props>(({ listRef, itemHeight, columns, count }, ref) => {
   const theme = useTheme()
   const containerRef = useRef<View>(null)
   const [trackHeight, setTrackHeight] = useState(0)
   const [progress, setProgress] = useState(0) // 0~1 当前滚动位置比例
+  const [isDragging, setIsDragging] = useState(false)
   const draggingRef = useRef(false)
   // 记录真实的滚动范围（含 header/footer），拖动时精确按此定位
   const scrollRangeRef = useRef(0)
@@ -36,9 +37,12 @@ const DraggableScrollBar = memo(forwardRef<DraggableScrollBarType, Props>(({ lis
     if (contentHeight <= 0 || trackHeight <= 0) return 1
     return Math.min(1, Math.max(0.08, trackHeight / contentHeight))
   }, [contentHeight, trackHeight])
-  const thumbHeight = Math.max(44, trackHeight * thumbRatio)
+  const thumbHeight = Math.max(40, trackHeight * thumbRatio)
   const maxThumbTop = Math.max(0, trackHeight - thumbHeight)
   const thumbTop = progress * maxThumbTop
+  // 拖动时滑块变宽并高亮
+  const thumbWidth = isDragging ? 10 : 6
+  const thumbRight = (styles.track.width - thumbWidth) / 2
 
   const scrollToProgress = (p: number) => {
     const clamped = Math.min(1, Math.max(0, p))
@@ -74,6 +78,7 @@ const DraggableScrollBar = memo(forwardRef<DraggableScrollBarType, Props>(({ lis
     onMoveShouldSetPanResponder: () => true,
     onPanResponderGrant: (evt) => {
       draggingRef.current = true
+      setIsDragging(true)
       dragToY(evt.nativeEvent.pageY)
     },
     onPanResponderMove: (evt) => {
@@ -81,9 +86,11 @@ const DraggableScrollBar = memo(forwardRef<DraggableScrollBarType, Props>(({ lis
     },
     onPanResponderRelease: () => {
       draggingRef.current = false
+      setIsDragging(false)
     },
     onPanResponderTerminate: () => {
       draggingRef.current = false
+      setIsDragging(false)
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [thumbHeight, contentHeight, trackHeight])
@@ -96,15 +103,21 @@ const DraggableScrollBar = memo(forwardRef<DraggableScrollBarType, Props>(({ lis
       style={styles.track}
       onLayout={e => { setTrackHeight(e.nativeEvent.layout.height) }}
       collapsable={false}
+      {...panResponder.panHandlers}
     >
+      {/* 细轨道线 */}
+      <View style={styles.rail} />
+      {/* 胶囊滑块 */}
       <View
         style={{
           ...styles.thumb,
+          width: thumbWidth,
+          right: thumbRight,
           height: thumbHeight,
           top: thumbTop,
           backgroundColor: theme['c-primary'],
+          opacity: isDragging ? 1 : 0.7,
         }}
-        {...panResponder.panHandlers}
       />
     </View>
   )
@@ -116,15 +129,27 @@ const styles = createStyle({
     right: 0,
     top: 0,
     bottom: 0,
-    width: 30,
+    width: 22,
     zIndex: 10,
+    alignItems: 'center',
+  },
+  rail: {
+    position: 'absolute',
+    top: 4,
+    bottom: 4,
+    left: 9.5,
+    width: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(150,150,170,0.22)',
   },
   thumb: {
     position: 'absolute',
-    right: 5,
-    width: 14,
-    borderRadius: 7,
-    opacity: 0.92,
+    borderRadius: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.35,
+    shadowRadius: 3,
+    elevation: 4,
   },
 })
 
