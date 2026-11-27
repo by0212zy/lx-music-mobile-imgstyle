@@ -76,7 +76,7 @@ export default memo(({ item, index, activeIndex, onPress, onShowMenu, onLongPres
                 <View style={styles.listenTrack}>
                   <View style={[styles.listenFill, { width: `${listenPercent}%` }]} />
                 </View>
-                <Text size={9} color={theme['c-primary']} style={styles.listenPercentText}>{listenPercent}%</Text>
+                <Text size={11} color={theme['c-primary']} style={styles.listenPercentText}>{listenPercent}%</Text>
               </View>
             : null }
         </View>
@@ -158,15 +158,15 @@ const styles = createStyle({
     gap: 6,
   },
   listenTrack: {
-    width: 60,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    width: 72,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.18)',
     overflow: 'hidden',
   },
   listenFill: {
-    height: 3,
-    borderRadius: 2,
+    height: 5,
+    borderRadius: 3,
     backgroundColor: '#2979FF',
   },
   listenPercentText: {

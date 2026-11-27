@@ -1,6 +1,6 @@
 import { playList } from '@/core/player/player'
 import { useMemo, useRef, useState, useEffect, forwardRef, useImperativeHandle } from 'react'
-import { FlatList, type NativeScrollEvent, type NativeSyntheticEvent, type FlatListProps } from 'react-native'
+import { FlatList, View, type NativeScrollEvent, type NativeSyntheticEvent, type FlatListProps } from 'react-native'
 
 import listState from '@/store/list/state'
 import playerState from '@/store/player/state'
@@ -14,6 +14,8 @@ import type { Position } from './ListMenu'
 import type { SelectMode } from './MultipleModeBar'
 import { useActiveListId } from '@/store/list/hook'
 import { useSettingValue } from '@/store/setting/hook'
+import DraggableScrollBar, { type DraggableScrollBarType } from '@/components/OnlineList/DraggableScrollBar'
+import ListNavButtons from '@/components/common/ListNavButtons'
 
 type FlatListType = FlatListProps<LX.Music.MusicInfo>
 
@@ -47,6 +49,7 @@ const usePlayIndex = () => {
 const List = forwardRef<ListType, ListProps>(({ onShowMenu, onMuiltSelectMode, onSelectAll }, ref) => {
   // const t = useI18n()
   const flatListRef = useRef<FlatList>(null)
+  const scrollBarRef = useRef<DraggableScrollBarType>(null)
   const [currentList, setList] = useState<LX.List.ListMusics>([])
   const listFirstScrollRef = useRef(false)
   const isMultiSelectModeRef = useRef(false)
@@ -182,6 +185,24 @@ const List = forwardRef<ListType, ListProps>(({ onShowMenu, onMuiltSelectMode, o
     void playList(listState.activeListId, index)
   }
 
+  // 快捷导航回调
+  const handleScrollTop = () => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true })
+  }
+  const handleScrollBottom = () => {
+    flatListRef.current?.scrollToEnd({ animated: true })
+  }
+  const handleLocatePlaying = () => {
+    if (activeIndex < 0) return
+    try {
+      flatListRef.current?.scrollToIndex({
+        index: Math.floor(activeIndex / (rowInfo.current.rowNum ?? 1)),
+        viewPosition: 0.3,
+        animated: true,
+      })
+    } catch {}
+  }
+
   const handleUpdateSelectedList = (newList: LX.List.ListMusics) => {
     if (selectedListRef.current.length && newList.length == currentList.length) onSelectAll(true)
     else if (selectedListRef.current.length == currentList.length) onSelectAll(false)
@@ -240,12 +261,13 @@ const List = forwardRef<ListType, ListProps>(({ onShowMenu, onMuiltSelectMode, o
     onMuiltSelectMode()
   }
 
-  const handleScroll = ({ nativeEvent }: NativeSyntheticEvent<NativeScrollEvent>) => {
+  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollBarRef.current?.onScroll(e)
     if (listFirstScrollRef.current) {
       listFirstScrollRef.current = false
       return
     }
-    void saveListPosition(listState.activeListId, nativeEvent.contentOffset.y)
+    void saveListPosition(listState.activeListId, e.nativeEvent.contentOffset.y)
   }
 
 
@@ -269,29 +291,49 @@ const List = forwardRef<ListType, ListProps>(({ onShowMenu, onMuiltSelectMode, o
   }
 
   return (
-    <FlatList
-      ref={flatListRef}
-      onScroll={handleScroll}
-      style={styles.list}
-      data={currentList}
-      maxToRenderPerBatch={4}
-      numColumns={rowInfo.current.rowNum}
-      horizontal={false}
-      // updateCellsBatchingPeriod={80}
-      windowSize={8}
-      removeClippedSubviews={true}
-      initialNumToRender={12}
-      renderItem={renderItem}
-      keyExtractor={getkey}
-      extraData={activeIndex}
-      getItemLayout={getItemLayout}
-    />
+    <View style={styles.listContainer}>
+      <FlatList
+        ref={flatListRef}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        style={styles.list}
+        data={currentList}
+        maxToRenderPerBatch={4}
+        numColumns={rowInfo.current.rowNum}
+        horizontal={false}
+        showsVerticalScrollIndicator={false}
+        // updateCellsBatchingPeriod={80}
+        windowSize={8}
+        removeClippedSubviews={true}
+        initialNumToRender={12}
+        renderItem={renderItem}
+        keyExtractor={getkey}
+        extraData={activeIndex}
+        getItemLayout={getItemLayout}
+      />
+      <DraggableScrollBar
+        ref={scrollBarRef}
+        listRef={flatListRef}
+        itemHeight={ITEM_HEIGHT}
+        columns={rowInfo.current.rowNum ?? 1}
+        count={currentList.length}
+      />
+      <ListNavButtons
+        onScrollTop={handleScrollTop}
+        onScrollBottom={handleScrollBottom}
+        onLocatePlaying={handleLocatePlaying}
+      />
+    </View>
   )
 })
 
 const styles = createStyle({
   container: {
     flex: 1,
+  },
+  listContainer: {
+    flex: 1,
+    position: 'relative',
   },
   list: {
     flexGrow: 1,

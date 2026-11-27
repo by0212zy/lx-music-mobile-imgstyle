@@ -14,6 +14,8 @@ import Text from '@/components/common/Text'
 import { handlePlay } from './listAction'
 import { useSettingValue } from '@/store/setting/hook'
 import DraggableScrollBar, { type DraggableScrollBarType } from './DraggableScrollBar'
+import ListNavButtons from '@/components/common/ListNavButtons'
+import { usePlayerMusicInfo } from '@/store/player/hook'
 
 type FlatListType = FlatListProps<LX.Music.MusicInfoOnline>
 
@@ -232,6 +234,26 @@ const List = forwardRef<ListType, ListProps>(({
   }, [onLoadMore, status, visibleMultiSelect])
 
   const columns = rowInfo.current.rowNum ?? 1
+  const musicInfo = usePlayerMusicInfo()
+
+  // 定位到正在播放的歌曲：按 id 在当前列表查找
+  const handleLocatePlaying = () => {
+    const index = currentList.findIndex(m => m.id === musicInfo.id)
+    if (index < 0) return
+    try {
+      flatListRef.current?.scrollToIndex({
+        index: Math.floor(index / columns),
+        viewPosition: 0.3,
+        animated: true,
+      })
+    } catch {}
+  }
+  const handleScrollTop = () => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true })
+  }
+  const handleScrollBottom = () => {
+    flatListRef.current?.scrollToEnd({ animated: true })
+  }
 
   return (
     <View style={styles.listContainer}>
@@ -267,6 +289,11 @@ const List = forwardRef<ListType, ListProps>(({
         itemHeight={ITEM_HEIGHT}
         columns={columns}
         count={currentList.length}
+      />
+      <ListNavButtons
+        onScrollTop={handleScrollTop}
+        onScrollBottom={handleScrollBottom}
+        onLocatePlaying={handleLocatePlaying}
       />
     </View>
   )

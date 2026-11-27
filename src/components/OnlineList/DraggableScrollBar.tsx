@@ -36,7 +36,7 @@ const DraggableScrollBar = memo(forwardRef<DraggableScrollBarType, Props>(({ lis
     if (contentHeight <= 0 || trackHeight <= 0) return 1
     return Math.min(1, Math.max(0.08, trackHeight / contentHeight))
   }, [contentHeight, trackHeight])
-  const thumbHeight = Math.max(28, trackHeight * thumbRatio)
+  const thumbHeight = Math.max(44, trackHeight * thumbRatio)
   const maxThumbTop = Math.max(0, trackHeight - thumbHeight)
   const thumbTop = progress * maxThumbTop
 
@@ -116,15 +116,15 @@ const styles = createStyle({
     right: 0,
     top: 0,
     bottom: 0,
-    width: 20,
+    width: 30,
     zIndex: 10,
   },
   thumb: {
     position: 'absolute',
-    right: 3,
-    width: 6,
-    borderRadius: 3,
-    opacity: 0.75,
+    right: 5,
+    width: 14,
+    borderRadius: 7,
+    opacity: 0.92,
   },
 })
 

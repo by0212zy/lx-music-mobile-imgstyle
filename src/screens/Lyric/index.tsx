@@ -446,7 +446,7 @@ export default memo(({ componentId }: { componentId: string }) => {
             <View style={styles.headerTitle}>
               <Text size={17} color="#FFFFFF" numberOfLines={1} style={styles.headerSongName}>{musicInfo.name}</Text>
               <View style={styles.headerSubRow}>
-                <Text size={11} color="#9E96B5" numberOfLines={1} style={styles.singerText}>{musicInfo.singer}</Text>
+                <Text size={13} color="#9E96B5" numberOfLines={1} style={styles.singerText}>{musicInfo.singer}</Text>
                 <View style={styles.orderBadge}>
                   <Text size={12} color="#FFFFFF" style={styles.orderText}>{playOrder.current} / {playOrder.total}</Text>
                 </View>
