@@ -445,10 +445,12 @@ export default memo(({ componentId }: { componentId: string }) => {
             </TouchableOpacity>
             <View style={styles.headerTitle}>
               <Text size={17} color="#FFFFFF" numberOfLines={1} style={styles.headerSongName}>{musicInfo.name}</Text>
-              <Text size={11} color="#9E96B5" numberOfLines={1} style={styles.headerTitleText}>{musicInfo.singer}</Text>
-            </View>
-            <View style={styles.orderBadge}>
-              <Text size={12} color="#FFFFFF" style={styles.orderText}>{playOrder.current} / {playOrder.total}</Text>
+              <View style={styles.headerSubRow}>
+                <Text size={11} color="#9E96B5" numberOfLines={1} style={styles.singerText}>{musicInfo.singer}</Text>
+                <View style={styles.orderBadge}>
+                  <Text size={12} color="#FFFFFF" style={styles.orderText}>{playOrder.current} / {playOrder.total}</Text>
+                </View>
+              </View>
             </View>
           </View>
         </View>
@@ -521,7 +523,14 @@ const styles = createStyle({
     justifyContent: 'flex-start',
     paddingTop: 1,
   },
-  headerTitleText: {
+  headerSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  singerText: {
+    flex: 1,
+    minWidth: 0,
     textAlign: 'left',
   },
   headerSongName: {
@@ -529,14 +538,13 @@ const styles = createStyle({
     fontWeight: 'bold',
   },
   orderBadge: {
-    // 单行「1333 / 2090」，下移到作者那一行（第二行），不遮挡上方歌名
-    marginTop: 16,
+    // 与作者同处第二行、右对齐；歌名独占第一行完整宽度不被挤占
     paddingHorizontal: 11,
     paddingVertical: 3,
     borderRadius: 10,
     backgroundColor: '#2979FF',
     flexShrink: 0,
-    zIndex: 2,
+    marginLeft: 8,
   },
   orderText: {
     fontWeight: 'bold',
