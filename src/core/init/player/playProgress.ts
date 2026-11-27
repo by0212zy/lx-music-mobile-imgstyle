@@ -10,6 +10,7 @@ import settingState from '@/store/setting/state'
 import { onScreenStateChange } from '@/utils/nativeModules/utils'
 import { AppState } from 'react-native'
 import { playNext } from '@/core/player/player'
+import { initListenProgress, setListenProgress, flushListenProgress } from '@/core/listenProgress'
 
 const delaySavePlayInfo = throttleBackgroundTimer(() => {
   void savePlayInfo({
@@ -22,6 +23,8 @@ const delaySavePlayInfo = throttleBackgroundTimer(() => {
 
 export default () => {
   // const updateMusicInfo = useCommit('list', 'updateMusicInfo')
+
+  void initListenProgress()
 
   let updateTimeout: number | null = null
   let introSkippedId: string | null = ''
@@ -57,6 +60,13 @@ export default () => {
       }
 
       setNowPlayTime(position)
+
+      // 图片样式版：记录每首歌的已听进度（用于歌曲列表进度标识），仅正常播放时记录
+      if (!playerState.playMusicInfo.isTempPlay) {
+        const maxTime = playerState.progress.maxPlayTime
+        if (id && maxTime > 0) setListenProgress(id, position, maxTime)
+      }
+
       if (!playerState.isPlay) return
 
       if (settingState.setting['player.isSavePlayTime'] && !playerState.playMusicInfo.isTempPlay && isScreenOn) {
@@ -151,6 +161,8 @@ export default () => {
     // void setCurrentTime(playerState.progress.nowPlayTime)
     // setMaxplayTime(playProgress.maxPlayTime)
     handlePause()
+    // 切歌前把上一首的进度落盘，避免节流窗口内丢失
+    flushListenProgress()
     if (!playerState.playMusicInfo.isTempPlay) {
       // 图片样式版：启动恢复时 setPlayMusicInfo 会把进度重置为 0 并触发 musicToggled，
       // 若照此保存会覆盖磁盘上记住的播放进度。恢复期间改用恢复数据保存，避免进度丢失。
@@ -210,6 +222,7 @@ export default () => {
         listId: playerState.playMusicInfo.listId!,
         index: playerState.playInfo.playIndex,
       })
+      flushListenProgress()
     }
   })
 

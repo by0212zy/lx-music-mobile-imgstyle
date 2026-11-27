@@ -10,6 +10,7 @@ import { scaleSizeH } from '@/utils/pixelRatio'
 import { LIST_ITEM_HEIGHT } from '@/config/constant'
 import { createStyle, type RowInfo } from '@/utils/tools'
 import { useDownloadedIds } from '@/core/download/useDownloadedIds'
+import { useListenProgress } from '@/core/listenProgress/useListenProgress'
 
 export const ITEM_HEIGHT = scaleSizeH(LIST_ITEM_HEIGHT)
 
@@ -45,6 +46,7 @@ export default memo(({ item, index, showSource, onPress, onLongPress, onShowMenu
   const theme = useTheme()
   const downloadedIds = useDownloadedIds()
   const isDownloadedItem = downloadedIds.has(item.id)
+  const listenPercent = useListenProgress(item.id)
 
   const isSelected = selectedList.includes(item)
 
@@ -73,6 +75,14 @@ export default memo(({ item, index, showSource, onPress, onLongPress, onShowMenu
             { isDownloadedItem ? <Text size={9} color={theme['c-primary']} style={styles.downloadedBadge}>已下载</Text> : null }
             <Text style={styles.listItemSingleText} size={11} color={theme['c-500']} numberOfLines={1}>{singer}</Text>
           </View>
+          { listenPercent > 0
+            ? <View style={styles.listenProgress}>
+                <View style={styles.listenTrack}>
+                  <View style={[styles.listenFill, { width: `${listenPercent}%` }]} />
+                </View>
+                <Text size={9} color={theme['c-primary']} style={styles.listenPercentText}>{listenPercent}%</Text>
+              </View>
+            : null }
         </View>
         {
           isShowInterval ? (
@@ -146,6 +156,27 @@ const styles = createStyle({
   downloadedBadge: {
     marginRight: 5,
     alignSelf: 'center',
+    fontWeight: '500',
+  },
+  listenProgress: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 3,
+    gap: 6,
+  },
+  listenTrack: {
+    width: 60,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    overflow: 'hidden',
+  },
+  listenFill: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: '#2979FF',
+  },
+  listenPercentText: {
     fontWeight: '500',
   },
   listItemSingleText: {

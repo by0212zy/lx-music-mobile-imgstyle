@@ -50,6 +50,7 @@ export const storageDataPrefix = {
   musicUrl: '@music_url__',
   musicOtherSource: '@music_other_source__',
   playInfo: '@play_info',
+  listenProgress: '@listen_progress',
 
   syncAuthKey: '@sync_auth_key',
   syncHost: '@sync_host',
