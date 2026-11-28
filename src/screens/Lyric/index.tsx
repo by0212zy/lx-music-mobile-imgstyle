@@ -26,8 +26,8 @@ import { createStyle } from '@/utils/tools'
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 const SENTINEL = 1
 const NAV_LOCK_MS = 450
-// 用户拖拽后多久内的 pageSelected 视为真实手势；程序 setPage 不产生 dragging
-const USER_DRAG_WINDOW = 1200
+// 用户拖拽后多久内的 pageSelected 视为真实手势（仅作 fallback；主判据是 dragging 状态会话标志）
+const USER_DRAG_WINDOW = 2000
 // 切歌等待新歌词就绪的最长时间（超时后兜底定位到首页，绝不用旧歌词分页）
 const SWITCH_WAIT_MS = 5000
 
@@ -142,11 +142,20 @@ export default memo(({ componentId }: { componentId: string }) => {
   const pageRef = useRef(0)
   const syncModeRef = useRef(true)
   const dragAtRef = useRef(0)
+  // 用户正在真实拖拽的会话标志：dragging 时置位，idle/settling 结束才清除。
+  // 比时间戳窗口可靠——慢速拖动跨过窗口也不会被误判为程序翻页而拉回。
+  const userDragRef = useRef(false)
   const navLockRef = useRef(false)
   const navTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingSwitchRef = useRef<PendingSwitch | null>(null)
   // 首次装载是否已定位完成：未完成前自动跟随必须门控，防止与首次定位打架造成进入乱跳
   const didInitRef = useRef(false)
+  // 已为哪个 musicId 完成过 PagerView 定位。用于识别自动播放切歌（不经哨兵手势、
+  // pendingSwitchRef 为 null）：id 变化但未定位时必须重建，否则 children 变了 key/initialPage
+  // 没变，会停在旧页甚至哨兵空白页，表现为歌词行点不动。
+  const positionedMusicIdRef = useRef(musicInfo.id)
+  // 自动播放切歌待定位目标：记录切换瞬间的歌词引用作为基线，等真正刷新后再重建
+  const autoSwitchRef = useRef<{ id: string | null, baseLines: unknown, startedAt: number } | null>(null)
   // 切歌定位锚定：prev 切到末页后，播放进度往往被播放器归零（playLine=0），
   // 若不锚定，自动跟随会把页面从末页拉回第一页。锚定直到播放进度追上锚定页或用户主动操作。
   const anchorRef = useRef(false)
@@ -236,23 +245,51 @@ export default memo(({ componentId }: { componentId: string }) => {
     else void playNext()
   }, [lockNav, cancelSwitchSeek, musicInfo.id, lyricLines])
 
-  // 记录用户真实拖拽：程序 setPage / key 重建不产生 dragging 状态，据此排除程序性事件
+  // 记录用户真实拖拽：程序 setPage / key 重建不产生 dragging 状态，据此排除程序性事件。
+  // 用会话标志而非纯时间戳：慢速拖动（>2s）跨过时间窗口也不会被误判为程序翻页。
+  const dragIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const handleScrollStateChanged = useCallback(({ nativeEvent }: PageScrollStateChangedNativeEvent) => {
-    if (nativeEvent.pageScrollState === 'dragging') dragAtRef.current = Date.now()
+    const state = nativeEvent.pageScrollState
+    if (state === 'dragging') {
+      userDragRef.current = true
+      dragAtRef.current = Date.now()
+      if (dragIdleTimerRef.current) {
+        clearTimeout(dragIdleTimerRef.current)
+        dragIdleTimerRef.current = null
+      }
+    } else if (state === 'idle' || state === 'settling') {
+      // 延迟清除：pageSelected 常在 idle/settling 之后紧接着到达，需让其仍读到 userDragRef
+      if (dragIdleTimerRef.current) clearTimeout(dragIdleTimerRef.current)
+      dragIdleTimerRef.current = setTimeout(() => {
+        userDragRef.current = false
+        dragIdleTimerRef.current = null
+      }, 250)
+    }
+  }, [])
+
+  useEffect(() => () => {
+    if (dragIdleTimerRef.current) clearTimeout(dragIdleTimerRef.current)
   }, [])
 
   const handlePageSelected = useCallback(({ nativeEvent }: PagerViewOnPageSelectedEvent) => {
     if (pendingSwitchRef.current) return
     if (navLockRef.current) return
-    const isUserDrag = Date.now() - dragAtRef.current < USER_DRAG_WINDOW
+    const isUserDrag = userDragRef.current || (Date.now() - dragAtRef.current < USER_DRAG_WINDOW)
     const position = nativeEvent.position
     const slide = slides[position]
     if (!slide) return
 
     if (slide.sentinel) {
       // 仅用户真实手势滑到哨兵页才切歌；程序性事件（children 变化/重建）一律忽略
-      if (isUserDrag) requestSwitch(slide.sentinel)
+      if (isUserDrag) {
+        requestSwitch(slide.sentinel)
+      } else {
+        // 程序性落到哨兵页：回弹到相邻真实页，杜绝卡在「滑动切换下一首」空白页
+        const fallback = slide.sentinel === 'prev' ? SENTINEL : SENTINEL + Math.max(0, realPageCount - 1)
+        pagerRef.current?.setPage(fallback)
+      }
       dragAtRef.current = 0
+      userDragRef.current = false
       return
     }
 
@@ -264,6 +301,7 @@ export default memo(({ componentId }: { componentId: string }) => {
       anchorRef.current = false
       syncModeRef.current = realPage === pageForLine(playLineRef.current)
       dragAtRef.current = 0
+      userDragRef.current = false
     }
   }, [slides, realPageCount, pageForLine, requestSwitch])
 
@@ -273,6 +311,8 @@ export default memo(({ componentId }: { componentId: string }) => {
   useEffect(() => {
     if (!didInitRef.current) return
     if (pendingSwitchRef.current) return
+    // 自动切歌定位完成前不跟随，避免用旧/中间态歌词数据 setPage 干扰重建
+    if (positionedMusicIdRef.current !== musicInfo.id) return
     if (navLockRef.current) return
     const target = pageForLine(lineIndexForTime(nowPlayTime))
     if (anchorRef.current) {
@@ -289,7 +329,7 @@ export default memo(({ componentId }: { componentId: string }) => {
     pageRef.current = target
     setPage(target)
     pagerRef.current?.setPage(target + SENTINEL)
-  }, [nowPlayTime, pageForLine, lineIndexForTime])
+  }, [nowPlayTime, pageForLine, lineIndexForTime, musicInfo.id])
 
   // 首次装载：歌词就绪后重建 PagerView 定位到当前播放行
   useEffect(() => {
@@ -297,6 +337,7 @@ export default memo(({ componentId }: { componentId: string }) => {
     if (!lyricLines.length) return
     if (pendingSwitchRef.current) return
     didInitRef.current = true
+    positionedMusicIdRef.current = musicInfo.id
     // 用真实播放进度时间定位，而非 playLine（歌词刚就绪时它可能仍是 -1/0 中间态，
     // 会导致首次定位到首页、随后再跳到播放页的乱跳）。
     const lineIdx = lineIndexForTime(nowPlayTimeRef.current)
@@ -307,7 +348,7 @@ export default memo(({ componentId }: { componentId: string }) => {
     setInitialPage(target + SENTINEL)
     setPagerKey(k => k + 1)
     setPagerReady(true)
-  }, [lyricLines, realPageCount, pageForLine, lineIndexForTime])
+  }, [lyricLines, realPageCount, pageForLine, lineIndexForTime, musicInfo.id])
 
   // 切歌定位：musicId 变化 + 新歌词就绪后，重建 PagerView 一次性定位
   useEffect(() => {
@@ -338,7 +379,9 @@ export default memo(({ componentId }: { componentId: string }) => {
     }
 
     pendingSwitchRef.current = null
+    autoSwitchRef.current = null
     didInitRef.current = true
+    positionedMusicIdRef.current = musicInfo.id
     syncModeRef.current = true
     dragAtRef.current = 0
     // prev 定位到末页后必须锚定：切歌会把播放进度重置到开头，playLine 落在首页，
@@ -352,6 +395,40 @@ export default memo(({ componentId }: { componentId: string }) => {
     setPagerKey(k => k + 1)
     setPagerReady(true)
   }, [musicInfo.id, musicInfo.lrc, lyricLines, realPageCount, realPages, scheduleSwitchSeek])
+
+  // 自动播放切歌（播放器自然播放到下一首/上一首，或外部切歌）：没有经过哨兵手势，
+  // pendingSwitchRef 为 null，上面的切歌定位 effect 会直接 return。此时若 lyrics/slides 已变
+  // 而 PagerView 未重建，页面会停在旧位置甚至哨兵空白页，歌词行点不动。
+  // 这里检测「已定位 id 与当前 id 不一致且无切歌事务」，等歌词就绪后统一重建定位到首页。
+  useEffect(() => {
+    if (!didInitRef.current) return
+    if (pendingSwitchRef.current) return
+    if (positionedMusicIdRef.current === musicInfo.id) return
+
+    // 记录本次自动切歌的歌词基线与起始时间，用于歌词等待与超时兜底
+    if (!autoSwitchRef.current || autoSwitchRef.current.id !== musicInfo.id) {
+      autoSwitchRef.current = { id: musicInfo.id, baseLines: lyricLines, startedAt: Date.now() }
+    }
+    const linesRefreshed = lyricLines !== autoSwitchRef.current.baseLines
+    const lyricReady = linesRefreshed && (lyricLines.length > 0 || musicInfo.lrc === '')
+    const timedOut = Date.now() - autoSwitchRef.current.startedAt > SWITCH_WAIT_MS
+    if (!lyricReady && !timedOut) return
+
+    autoSwitchRef.current = null
+    positionedMusicIdRef.current = musicInfo.id
+    cancelSwitchSeek()
+    pendingSwitchRef.current = null
+    syncModeRef.current = true
+    anchorRef.current = false
+    dragAtRef.current = 0
+    userDragRef.current = false
+    setSelectedLine(null)
+    pageRef.current = 0
+    setPage(0)
+    setInitialPage(SENTINEL)
+    setPagerKey(k => k + 1)
+    setPagerReady(true)
+  }, [musicInfo.id, musicInfo.lrc, lyricLines, cancelSwitchSeek])
 
   useEffect(() => {
     if (selectedLine != null && selectedLine === playLine) setSelectedLine(null)
@@ -444,11 +521,11 @@ export default memo(({ componentId }: { componentId: string }) => {
               <Icon name="chevron-left" color="#FFFFFF" size={20} />
             </TouchableOpacity>
             <View style={styles.headerTitle}>
-              <Text size={17} color="#FFFFFF" numberOfLines={1} style={styles.headerSongName}>{musicInfo.name}</Text>
+              <Text size={18} color="#FFFFFF" numberOfLines={1} style={styles.headerSongName}>{musicInfo.name}</Text>
               <View style={styles.headerSubRow}>
                 <Text size={13} color="#9E96B5" numberOfLines={1} style={styles.singerText}>{musicInfo.singer}</Text>
                 <View style={styles.orderBadge}>
-                  <Text size={12} color="#FFFFFF" style={styles.orderText}>{playOrder.current} / {playOrder.total}</Text>
+                  <Text size={13} color="#FFFFFF" style={styles.orderText}>{playOrder.current} / {playOrder.total}</Text>
                 </View>
               </View>
             </View>
@@ -470,7 +547,7 @@ export default memo(({ componentId }: { componentId: string }) => {
           : <View style={styles.pager} />}
 
         <View style={styles.footer}>
-          <Text size={12} color="#8E86A8" style={styles.pageIndicator}>{page + 1} / {realPageCount}</Text>
+          <Text size={14} color="#8E86A8" style={styles.pageIndicator}>{page + 1} / {realPageCount}</Text>
           <View style={styles.controls}>
             <TouchableOpacity
               style={{ ...styles.sideBtn, borderColor: '#A05CFF' }}
@@ -535,7 +612,7 @@ const styles = createStyle({
   },
   headerSongName: {
     textAlign: 'left',
-    fontWeight: 'bold',
+    fontWeight: '900',
   },
   orderBadge: {
     // 与作者同处第二行、右对齐；歌名独占第一行完整宽度不被挤占
@@ -547,7 +624,7 @@ const styles = createStyle({
     marginLeft: 8,
   },
   orderText: {
-    fontWeight: 'bold',
+    fontWeight: '900',
     textAlign: 'right',
   },
   pager: {
@@ -590,7 +667,7 @@ const styles = createStyle({
   pageIndicator: {
     textAlign: 'center',
     marginBottom: 12,
-    fontWeight: 'bold',
+    fontWeight: '900',
   },
   controls: {
     flexDirection: 'row',
