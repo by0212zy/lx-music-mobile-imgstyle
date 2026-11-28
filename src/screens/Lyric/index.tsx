@@ -16,6 +16,8 @@ import { useLrcSet } from '@/plugins/lyric'
 import { playNext, playPrev, togglePlay } from '@/core/player/player'
 import { getList } from '@/core/player/playInfo'
 import { pop } from '@/navigation'
+import { setComponentId } from '@/core/common'
+import { COMPONENT_IDS } from '@/config/constant'
 import { createStyle } from '@/utils/tools'
 
 // 图片样式：独立歌词阅读页
@@ -50,6 +52,13 @@ interface PendingSwitch {
 }
 
 export default memo(({ componentId }: { componentId: string }) => {
+  // 注册歌词页 componentId，使 push/pop 触发 componentIdsUpdated，
+  // 从而让首页抽屉在从歌词页返回后重新修复宽度（否则返回后侧边栏打不开）
+  useEffect(() => {
+    setComponentId(COMPONENT_IDS.lyric, componentId)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const musicInfo = usePlayerMusicInfo()
   const isPlay = useIsPlay()
   const { nowPlayTime } = useProgress()
@@ -648,11 +657,11 @@ const styles = createStyle({
     flex: 1,
     minWidth: 0,
     textAlign: 'left',
-    fontWeight: '700',
+    fontWeight: '900',
   },
   headerSongName: {
     textAlign: 'left',
-    fontWeight: '700',
+    fontWeight: '900',
   },
   orderBadge: {
     // 与作者同处第二行、右对齐；歌名独占第一行完整宽度不被挤占
@@ -664,7 +673,7 @@ const styles = createStyle({
     marginLeft: 8,
   },
   orderText: {
-    fontWeight: '700',
+    fontWeight: '900',
     textAlign: 'right',
   },
   pager: {
