@@ -163,6 +163,19 @@ export default memo(({ componentId }: { componentId: string }) => {
   playLineRef.current = playLine
   const musicIdRef = useRef(musicInfo.id)
   musicIdRef.current = musicInfo.id
+  // 点击歌词行/翻页触发的异步 seek 在途追踪：seek 生效前 playLine 仍是旧行，
+  // 若此刻用户滑动，绝不能用旧 playLine 恢复跟随，否则 seek 生效后会把页面拉回点击的段落页。
+  const seekAwaitRef = useRef<{ line: number, at: number } | null>(null)
+  // seek 是否仍在途：目标行追上即生效并清除；超过 2s 未生效则超时兜底（如切歌/无网络），不再冻结。
+  const isSeekPending = useCallback(() => {
+    const s = seekAwaitRef.current
+    if (!s) return false
+    if (playLineRef.current === s.line || Date.now() - s.at > 2000) {
+      seekAwaitRef.current = null
+      return false
+    }
+    return true
+  }, [])
 
   // 切上一首 seek 竞态：歌词异步就绪后我们 seek 到末页时间，但播放器 URL 加载完成后
   // handlePlayMusic 会用其捕获的旧 time（往往是 0）再 seekTo 覆盖，且这一步是异步的、
@@ -270,10 +283,11 @@ export default memo(({ componentId }: { componentId: string }) => {
         dragIdleTimerRef.current = null
         // 轻点/轻扫后若仍停在播放页，恢复自动跟随，避免丢失跟随；
         // 若停在别的页则保持暂停（由 handlePageSelected 已决定），不会被拉回。
-        if (pageRef.current === pageForLine(playLineRef.current)) syncModeRef.current = true
+        // seek 在途时用旧 playLine 判断会误恢复 —— 必须排除。
+        if (!isSeekPending() && pageRef.current === pageForLine(playLineRef.current)) syncModeRef.current = true
       }, 400)
     }
-  }, [pageForLine])
+  }, [pageForLine, isSeekPending])
 
   useEffect(() => () => {
     if (dragIdleTimerRef.current) clearTimeout(dragIdleTimerRef.current)
@@ -307,11 +321,13 @@ export default memo(({ componentId }: { componentId: string }) => {
     setSelectedLine(null)
     if (isUserDrag) {
       anchorRef.current = false
-      syncModeRef.current = realPage === pageForLine(playLineRef.current)
+      // 点击歌词/翻页的 seek 在途时，playLine 还是旧行，不能用它判断同步恢复；
+      // 否则 seek 生效后 playLine 跳到点击行，自动跟随会把页面拉回点击的段落页。
+      syncModeRef.current = !isSeekPending() && (realPage === pageForLine(playLineRef.current))
       dragAtRef.current = 0
       userDragRef.current = false
     }
-  }, [slides, realPageCount, pageForLine, requestSwitch])
+  }, [slides, realPageCount, pageForLine, requestSwitch, isSeekPending])
 
   // 播放进度变化自动跟随（仅在同步模式、无切歌事务时）
   // 目标行与高亮标识符统一由 nowPlayTime 推导的 playLine 计算，二者永不脱节；
@@ -324,6 +340,9 @@ export default memo(({ componentId }: { componentId: string }) => {
     if (navLockRef.current) return
     // 用户拖动会话期间绝不跟随（也不恢复 syncMode），否则播放推进会把正在滑动的页拉回
     if (userDragRef.current) return
+    // 点击歌词/翻页的 seek 在途：播放进度尚未跳到目标行，此刻跟随会用旧行把页拉走。
+    // isSeekPending 在 playLine 追上目标行时自动清除，随后才恢复跟随。
+    if (isSeekPending()) return
     const target = pageForLine(lineIndexForTime(nowPlayTime))
     if (anchorRef.current) {
       // 锚定中：只有播放进度真正推进到锚定页，才解除锚定恢复跟随；
@@ -339,7 +358,7 @@ export default memo(({ componentId }: { componentId: string }) => {
     pageRef.current = target
     setPage(target)
     pagerRef.current?.setPage(target + SENTINEL)
-  }, [nowPlayTime, pageForLine, lineIndexForTime, musicInfo.id])
+  }, [nowPlayTime, pageForLine, lineIndexForTime, musicInfo.id, isSeekPending])
 
   // 首次装载：歌词就绪后重建 PagerView 定位到当前播放行
   useEffect(() => {
@@ -448,6 +467,7 @@ export default memo(({ componentId }: { componentId: string }) => {
     cancelSwitchSeek()
     anchorRef.current = false
     syncModeRef.current = true
+    seekAwaitRef.current = { line: index, at: Date.now() }
     setSelectedLine(index)
     const time = lyricLines[index]?.time ?? 0
     global.app_event.setProgress(time / 1000)
@@ -461,6 +481,7 @@ export default memo(({ componentId }: { componentId: string }) => {
     anchorRef.current = false
     syncModeRef.current = true
     const next = clamp(highlightLine + 1, 0, lyricLines.length - 1)
+    seekAwaitRef.current = { line: next, at: Date.now() }
     setSelectedLine(next)
     const time = lyricLines[next]?.time ?? 0
     global.app_event.setProgress(time / 1000)
