@@ -217,17 +217,17 @@ export default () => {
   // 图片样式版：退到后台/锁屏前也保存一次进度，避免关闭应用时间较长后进度丢失
   AppState.addEventListener('change', (state) => {
     if (state == 'active' && !isScreenOn) handleScreenStateChanged('ON')
-    if ((state == 'background' || state == 'inactive') &&
-        settingState.setting['player.isSavePlayTime'] &&
-        !playerState.playMusicInfo.isTempPlay &&
-        playerState.musicInfo.id) {
-      void savePlayInfo({
-        time: playerState.progress.nowPlayTime,
-        maxTime: playerState.progress.maxPlayTime,
-        listId: playerState.playMusicInfo.listId!,
-        index: playerState.playInfo.playIndex,
-      })
+    if ((state == 'background' || state == 'inactive') && playerState.musicInfo.id) {
+      // 已听进度始终落盘（不受"记住播放进度"开关影响），确保应用关闭很久/进程被杀后重开仍能恢复
       flushListenProgress()
+      if (settingState.setting['player.isSavePlayTime'] && !playerState.playMusicInfo.isTempPlay) {
+        void savePlayInfo({
+          time: playerState.progress.nowPlayTime,
+          maxTime: playerState.progress.maxPlayTime,
+          listId: playerState.playMusicInfo.listId!,
+          index: playerState.playInfo.playIndex,
+        })
+      }
     }
   })
 

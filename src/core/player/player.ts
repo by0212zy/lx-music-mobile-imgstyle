@@ -28,6 +28,7 @@ import { checkIgnoringBatteryOptimization, checkNotificationPermission, debounce
 import { LIST_IDS } from '@/config/constant'
 import { addListMusics, removeListMusics } from '@/core/list'
 import { addDislikeInfo } from '@/core/dislikeList'
+import { getListenProgressItem } from '@/core/listenProgress'
 
 // import { checkMusicFileAvailable } from '@renderer/utils/music'
 
@@ -158,8 +159,21 @@ const handleRestorePlay = async(restorePlayInfo: LX.Player.SavedPlayInfo) => {
   const musicInfo = playerState.playMusicInfo.musicInfo
   if (!musicInfo) return
 
+  // 用按歌曲 id 持续记录的已听进度恢复（不受"记住播放进度"开关影响，锁屏/切歌/后台都会落盘）。
+  // 这样即使应用关闭很久或进程被杀，重新打开仍能恢复到上次真实播放位置。
+  const listenItem = musicInfo.id ? getListenProgressItem(musicInfo.id) : null
+  let restoreTime = 0
+  let restoreMaxTime = restorePlayInfo.maxTime
+  if (listenItem && listenItem.maxTime > 0 && listenItem.time > 0) {
+    restoreMaxTime = listenItem.maxTime
+    // 若接近结尾（视为已播完）则从头开始，避免恢复后瞬间切下一首
+    restoreTime = listenItem.time >= listenItem.maxTime - 1 ? 0 : listenItem.time
+  } else if (restorePlayInfo.time > 0) {
+    // 回退到已保存的播放信息（同样不依赖默认关闭的"记住播放进度"开关）
+    restoreTime = restorePlayInfo.time
+  }
   setTimeout(() => {
-    global.app_event.setProgress(settingState.setting['player.isSavePlayTime'] ? restorePlayInfo.time : 0, restorePlayInfo.maxTime)
+    global.app_event.setProgress(restoreTime, restoreMaxTime)
   })
 
   const playMusicInfo = playerState.playMusicInfo

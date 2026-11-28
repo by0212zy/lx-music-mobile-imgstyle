@@ -521,7 +521,7 @@ export default memo(({ componentId }: { componentId: string }) => {
               <Icon name="chevron-left" color="#FFFFFF" size={20} />
             </TouchableOpacity>
             <View style={styles.headerTitle}>
-              <Text size={18} color="#FFFFFF" numberOfLines={1} style={styles.headerSongName}>{musicInfo.name}</Text>
+              <Text size={17} color="#FFFFFF" numberOfLines={1} style={styles.headerSongName}>{musicInfo.name}</Text>
               <View style={styles.headerSubRow}>
                 <Text size={13} color="#9E96B5" numberOfLines={1} style={styles.singerText}>{musicInfo.singer}</Text>
                 <View style={styles.orderBadge}>
@@ -609,6 +609,7 @@ const styles = createStyle({
     flex: 1,
     minWidth: 0,
     textAlign: 'left',
+    fontWeight: '900',
   },
   headerSongName: {
     textAlign: 'left',

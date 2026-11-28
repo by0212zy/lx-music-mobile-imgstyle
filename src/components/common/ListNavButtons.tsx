@@ -16,13 +16,13 @@ const ListNavButtons = memo(({ onScrollTop, onScrollBottom, onLocatePlaying }: P
   return (
     <View style={styles.container}>
       <TouchableOpacity style={styles.btn} activeOpacity={0.7} onPress={onScrollTop}>
-        <Icon name="chevron-left" size={20} color={theme['c-primary-font']} style={styles.iconUp} />
+        <Icon name="chevron-left" size={22} color={theme['c-primary-font']} style={[styles.iconBold, styles.iconUp]} />
       </TouchableOpacity>
       <TouchableOpacity style={styles.btn} activeOpacity={0.7} onPress={onScrollBottom}>
-        <Icon name="chevron-left" size={20} color={theme['c-primary-font']} style={styles.iconDown} />
+        <Icon name="chevron-left" size={22} color={theme['c-primary-font']} style={[styles.iconBold, styles.iconDown]} />
       </TouchableOpacity>
       <TouchableOpacity style={styles.btn} activeOpacity={0.7} onPress={onLocatePlaying}>
-        <Icon name="play-outline" size={18} color={theme['c-primary-font']} />
+        <Icon name="play-outline" size={20} color={theme['c-primary-font']} style={styles.iconBold} />
       </TouchableOpacity>
     </View>
   )
@@ -45,6 +45,12 @@ const styles = createStyle({
     backgroundColor: 'rgba(150,150,170,0.22)',
     borderWidth: 0.6,
     borderColor: 'rgba(255,255,255,0.14)',
+  },
+  iconBold: {
+    fontWeight: '900',
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: { width: 0.6, height: 0.6 },
+    textShadowRadius: 1.2,
   },
   iconUp: {
     transform: [{ rotate: '90deg' }],
