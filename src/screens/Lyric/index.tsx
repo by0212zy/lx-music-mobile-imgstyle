@@ -550,7 +550,7 @@ export default memo(({ componentId }: { componentId: string }) => {
               <View style={styles.headerSubRow}>
                 <Text size={13} color="#9E96B5" numberOfLines={1} style={styles.singerText}>{musicInfo.singer}</Text>
                 <View style={styles.orderBadge}>
-                  <Text size={13} color="#FFFFFF" style={styles.orderText}>{playOrder.current} / {playOrder.total}</Text>
+                  <Text size={11} color="#FFFFFF" style={styles.orderText}>{playOrder.current} / {playOrder.total}</Text>
                 </View>
               </View>
             </View>
@@ -642,9 +642,9 @@ const styles = createStyle({
   },
   orderBadge: {
     // 与作者同处第二行、右对齐；歌名独占第一行完整宽度不被挤占
-    paddingHorizontal: 11,
-    paddingVertical: 3,
-    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
     backgroundColor: '#2979FF',
     flexShrink: 0,
     marginLeft: 8,
