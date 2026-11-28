@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { View, TouchableOpacity, StatusBar as RNStatusBar, type LayoutChangeEvent } from 'react-native'
+import { View, TouchableOpacity, TouchableWithoutFeedback, StatusBar as RNStatusBar, type LayoutChangeEvent } from 'react-native'
 import PagerView, {
   type PagerViewOnPageSelectedEvent,
   type PageScrollStateChangedNativeEvent,
@@ -253,6 +253,11 @@ export default memo(({ componentId }: { componentId: string }) => {
     if (state === 'dragging') {
       userDragRef.current = true
       dragAtRef.current = Date.now()
+      // 用户一开始拖动就暂停自动跟随：否则播放推进的 effect 会在拖动过程中
+      // setPage 把页面拉回当前播放页，表现为"滑到下一页又弹回去"。
+      // 松手后由 handlePageSelected 根据最终落点决定是否恢复跟随。
+      syncModeRef.current = false
+      anchorRef.current = false
       if (dragIdleTimerRef.current) {
         clearTimeout(dragIdleTimerRef.current)
         dragIdleTimerRef.current = null
@@ -263,9 +268,12 @@ export default memo(({ componentId }: { componentId: string }) => {
       dragIdleTimerRef.current = setTimeout(() => {
         userDragRef.current = false
         dragIdleTimerRef.current = null
-      }, 250)
+        // 轻点/轻扫后若仍停在播放页，恢复自动跟随，避免丢失跟随；
+        // 若停在别的页则保持暂停（由 handlePageSelected 已决定），不会被拉回。
+        if (pageRef.current === pageForLine(playLineRef.current)) syncModeRef.current = true
+      }, 400)
     }
-  }, [])
+  }, [pageForLine])
 
   useEffect(() => () => {
     if (dragIdleTimerRef.current) clearTimeout(dragIdleTimerRef.current)
@@ -314,6 +322,8 @@ export default memo(({ componentId }: { componentId: string }) => {
     // 自动切歌定位完成前不跟随，避免用旧/中间态歌词数据 setPage 干扰重建
     if (positionedMusicIdRef.current !== musicInfo.id) return
     if (navLockRef.current) return
+    // 用户拖动会话期间绝不跟随（也不恢复 syncMode），否则播放推进会把正在滑动的页拉回
+    if (userDragRef.current) return
     const target = pageForLine(lineIndexForTime(nowPlayTime))
     if (anchorRef.current) {
       // 锚定中：只有播放进度真正推进到锚定页，才解除锚定恢复跟随；
@@ -443,6 +453,19 @@ export default memo(({ componentId }: { componentId: string }) => {
     global.app_event.setProgress(time / 1000)
   }, [lyricLines, cancelSwitchSeek])
 
+  // 点击歌词页空白区域：切换到下一段（高亮行的下一行）播放。
+  // 歌词行自身的 TouchableOpacity 会优先响应点击，因此只有点到没有文字的空白处才会走到这里。
+  const handleBlankPress = useCallback(() => {
+    if (!lyricLines.length) return
+    cancelSwitchSeek()
+    anchorRef.current = false
+    syncModeRef.current = true
+    const next = clamp(highlightLine + 1, 0, lyricLines.length - 1)
+    setSelectedLine(next)
+    const time = lyricLines[next]?.time ?? 0
+    global.app_event.setProgress(time / 1000)
+  }, [lyricLines, highlightLine, cancelSwitchSeek])
+
   const goPage = useCallback((delta: number) => {
     if (navLockRef.current) return
     if (pendingSwitchRef.current) return
@@ -477,38 +500,40 @@ export default memo(({ componentId }: { componentId: string }) => {
   }, [pageForLine, playLine, realPageCount, cancelSwitchSeek])
 
   const renderPage = (slide: Slide) => (
-    <View style={{ ...styles.page, height: contentHeight }} collapsable={false} key={slide.key}>
-      {
-        slide.sentinel
-          ? <Text size={16} color="#8E86A8" style={styles.emptyText}>{slide.sentinel === 'prev' ? '滑动切换上一首' : '滑动切换下一首'}</Text>
-          : slide.lines.length
-            ? slide.lines.map(({ index, text }) => {
-              const active = index === highlightLine
-              return (
-                <TouchableOpacity
-                  style={{ ...styles.lineRow, marginBottom: rowGap }}
-                  activeOpacity={0.7}
-                  key={index}
-                  onPress={() => { handleLinePress(index) }}
-                >
-                  {/* 标识符用行容器左边框实现，高度天然等于整段文字含任意折行，直角不圆角 */}
-                  <View style={active ? styles.activeBar : styles.inactiveBar}>
-                    <Text
-                      size={fontSize}
-                      style={{
-                        ...styles.lineText,
-                        lineHeight: textLineHeight,
-                        color: active ? '#FFB300' : '#EDEAF5',
-                        fontWeight: String(fontWeight) as 'normal' | 'bold' | '400' | '500' | '600' | '700' | '800' | '900',
-                      }}
-                    >{text}</Text>
-                  </View>
-                </TouchableOpacity>
-              )
-            })
-            : <Text size={16} color="#8E86A8" style={styles.emptyText}>暂无歌词</Text>
-      }
-    </View>
+    <TouchableWithoutFeedback key={slide.key} onPress={handleBlankPress} disabled={!!slide.sentinel}>
+      <View style={{ ...styles.page, height: contentHeight }} collapsable={false}>
+        {
+          slide.sentinel
+            ? <Text size={16} color="#8E86A8" style={styles.emptyText}>{slide.sentinel === 'prev' ? '滑动切换上一首' : '滑动切换下一首'}</Text>
+            : slide.lines.length
+              ? slide.lines.map(({ index, text }) => {
+                const active = index === highlightLine
+                return (
+                  <TouchableOpacity
+                    style={{ ...styles.lineRow, marginBottom: rowGap }}
+                    activeOpacity={0.7}
+                    key={index}
+                    onPress={() => { handleLinePress(index) }}
+                  >
+                    {/* 标识符用行容器左边框实现，高度天然等于整段文字含任意折行，直角不圆角 */}
+                    <View style={active ? styles.activeBar : styles.inactiveBar}>
+                      <Text
+                        size={fontSize}
+                        style={{
+                          ...styles.lineText,
+                          lineHeight: textLineHeight,
+                          color: active ? '#FFB300' : '#EDEAF5',
+                          fontWeight: String(fontWeight) as 'normal' | 'bold' | '400' | '500' | '600' | '700' | '800' | '900',
+                        }}
+                      >{text}</Text>
+                    </View>
+                  </TouchableOpacity>
+                )
+              })
+              : <Text size={16} color="#8E86A8" style={styles.emptyText}>暂无歌词</Text>
+        }
+      </View>
+    </TouchableWithoutFeedback>
   )
 
   return (

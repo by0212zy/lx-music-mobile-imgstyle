@@ -22,12 +22,13 @@ export default memo(({ isHome = false }: { isHome?: boolean }) => {
   const autoHidePlayBar = useSettingValue('common.autoHidePlayBar')
   const musicInfo = usePlayerMusicInfo()
 
-  // 上滑播放栏打开播放界面；只在明显上滑时接管手势，不影响内部按钮点击
+  // 上滑播放栏打开歌词界面；点击（封面/标题）仍打开播放界面，两者互不干扰
+  // 只在明显上滑时接管手势，不影响内部按钮点击
   const panResponder = useMemo(() => PanResponder.create({
     onMoveShouldSetPanResponder: (_evt, g) => g.dy < -18 && Math.abs(g.dy) > Math.abs(g.dx) * 1.2,
     onPanResponderRelease: (_evt, g) => {
       if (g.dy < -36 && Math.abs(g.dy) > Math.abs(g.dx) * 1.2 && musicInfo.id) {
-        navigations.pushPlayDetailScreen(commonState.componentIds.home!)
+        navigations.pushLyricScreen(commonState.componentIds.home!)
       }
     },
   }), [musicInfo.id])
