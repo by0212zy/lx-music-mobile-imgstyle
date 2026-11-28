@@ -163,18 +163,15 @@ export default memo(({ componentId }: { componentId: string }) => {
   playLineRef.current = playLine
   const musicIdRef = useRef(musicInfo.id)
   musicIdRef.current = musicInfo.id
-  // 点击歌词行/翻页触发的异步 seek 在途追踪：seek 生效前 playLine 仍是旧行，
-  // 若此刻用户滑动，绝不能用旧 playLine 恢复跟随，否则 seek 生效后会把页面拉回点击的段落页。
-  const seekAwaitRef = useRef<{ line: number, at: number } | null>(null)
-  // seek 是否仍在途：目标行追上即生效并清除；超过 2s 未生效则超时兜底（如切歌/无网络），不再冻结。
-  const isSeekPending = useCallback(() => {
-    const s = seekAwaitRef.current
-    if (!s) return false
-    if (playLineRef.current === s.line || Date.now() - s.at > 2000) {
-      seekAwaitRef.current = null
-      return false
-    }
-    return true
+  // 主动 seek/翻页后的稳定窗口：窗口内自动跟随完全不干预。
+  // 根因：seek 是异步的，生效瞬间 playLine 会用「旧行」或「点击行」触发跟随，
+  // 若用户此刻又翻了页，页面就会被拉回点击/播放的段落页。用时间窗口隔离这段混乱期。
+  const settleUntilRef = useRef(0)
+  const markSettle = useCallback(() => {
+    settleUntilRef.current = Date.now() + 600
+    // 主动操作后先暂停跟随；窗口结束后由进度 effect 依据「当前页是否等于播放页」决定是否恢复
+    syncModeRef.current = false
+    anchorRef.current = false
   }, [])
 
   // 切上一首 seek 竞态：歌词异步就绪后我们 seek 到末页时间，但播放器 URL 加载完成后
@@ -283,11 +280,11 @@ export default memo(({ componentId }: { componentId: string }) => {
         dragIdleTimerRef.current = null
         // 轻点/轻扫后若仍停在播放页，恢复自动跟随，避免丢失跟随；
         // 若停在别的页则保持暂停（由 handlePageSelected 已决定），不会被拉回。
-        // seek 在途时用旧 playLine 判断会误恢复 —— 必须排除。
-        if (!isSeekPending() && pageRef.current === pageForLine(playLineRef.current)) syncModeRef.current = true
+        // 主动 seek/翻页的稳定窗口内绝不恢复，否则异步 seek 生效时会把页面拉回。
+        if (Date.now() >= settleUntilRef.current && pageRef.current === pageForLine(playLineRef.current)) syncModeRef.current = true
       }, 400)
     }
-  }, [pageForLine, isSeekPending])
+  }, [pageForLine])
 
   useEffect(() => () => {
     if (dragIdleTimerRef.current) clearTimeout(dragIdleTimerRef.current)
@@ -321,13 +318,13 @@ export default memo(({ componentId }: { componentId: string }) => {
     setSelectedLine(null)
     if (isUserDrag) {
       anchorRef.current = false
-      // 点击歌词/翻页的 seek 在途时，playLine 还是旧行，不能用它判断同步恢复；
-      // 否则 seek 生效后 playLine 跳到点击行，自动跟随会把页面拉回点击的段落页。
-      syncModeRef.current = !isSeekPending() && (realPage === pageForLine(playLineRef.current))
+      // 主动 seek/翻页的稳定窗口内不恢复跟随；窗口外才按「落点是否播放页」决定。
+      // 否则旧 seek 生效时 playLine 变化会把页面拉回点击的段落页。
+      syncModeRef.current = Date.now() >= settleUntilRef.current && (realPage === pageForLine(playLineRef.current))
       dragAtRef.current = 0
       userDragRef.current = false
     }
-  }, [slides, realPageCount, pageForLine, requestSwitch, isSeekPending])
+  }, [slides, realPageCount, pageForLine, requestSwitch])
 
   // 播放进度变化自动跟随（仅在同步模式、无切歌事务时）
   // 目标行与高亮标识符统一由 nowPlayTime 推导的 playLine 计算，二者永不脱节；
@@ -340,9 +337,9 @@ export default memo(({ componentId }: { componentId: string }) => {
     if (navLockRef.current) return
     // 用户拖动会话期间绝不跟随（也不恢复 syncMode），否则播放推进会把正在滑动的页拉回
     if (userDragRef.current) return
-    // 点击歌词/翻页的 seek 在途：播放进度尚未跳到目标行，此刻跟随会用旧行把页拉走。
-    // isSeekPending 在 playLine 追上目标行时自动清除，随后才恢复跟随。
-    if (isSeekPending()) return
+    // 主动 seek/翻页的稳定窗口内不跟随：等待异步 seek 完全生效、页面稳定后再恢复，
+    // 避免旧 seek 生效瞬间用变化的 playLine 把页面拉回点击/播放的段落页。
+    if (Date.now() < settleUntilRef.current) return
     const target = pageForLine(lineIndexForTime(nowPlayTime))
     if (anchorRef.current) {
       // 锚定中：只有播放进度真正推进到锚定页，才解除锚定恢复跟随；
@@ -358,7 +355,7 @@ export default memo(({ componentId }: { componentId: string }) => {
     pageRef.current = target
     setPage(target)
     pagerRef.current?.setPage(target + SENTINEL)
-  }, [nowPlayTime, pageForLine, lineIndexForTime, musicInfo.id, isSeekPending])
+  }, [nowPlayTime, pageForLine, lineIndexForTime, musicInfo.id])
 
   // 首次装载：歌词就绪后重建 PagerView 定位到当前播放行
   useEffect(() => {
@@ -465,13 +462,11 @@ export default memo(({ componentId }: { componentId: string }) => {
 
   const handleLinePress = useCallback((index: number) => {
     cancelSwitchSeek()
-    anchorRef.current = false
-    syncModeRef.current = true
-    seekAwaitRef.current = { line: index, at: Date.now() }
+    markSettle()
     setSelectedLine(index)
     const time = lyricLines[index]?.time ?? 0
     global.app_event.setProgress(time / 1000)
-  }, [lyricLines, cancelSwitchSeek])
+  }, [lyricLines, cancelSwitchSeek, markSettle])
 
   // 点击歌词页空白区域：切换到下一段（高亮行的下一行）播放。
   // 歌词行自身的 TouchableOpacity 会优先响应点击，因此只有点到没有文字的空白处才会走到这里。
@@ -481,11 +476,11 @@ export default memo(({ componentId }: { componentId: string }) => {
     anchorRef.current = false
     syncModeRef.current = true
     const next = clamp(highlightLine + 1, 0, lyricLines.length - 1)
-    seekAwaitRef.current = { line: next, at: Date.now() }
+    markSettle()
     setSelectedLine(next)
     const time = lyricLines[next]?.time ?? 0
     global.app_event.setProgress(time / 1000)
-  }, [lyricLines, highlightLine, cancelSwitchSeek])
+  }, [lyricLines, highlightLine, cancelSwitchSeek, markSettle])
 
   const goPage = useCallback((delta: number) => {
     if (navLockRef.current) return
@@ -498,27 +493,25 @@ export default memo(({ componentId }: { componentId: string }) => {
     const target = clamp(pageRef.current + delta, 0, Math.max(0, realPageCount - 1))
     if (target === pageRef.current) return
     lockNav()
-    anchorRef.current = false
-    syncModeRef.current = true
+    markSettle()
     setSelectedLine(null)
     pageRef.current = target
     setPage(target)
     pagerRef.current?.setPage(target + SENTINEL)
     const lineIndex = clamp(realPages[target]?.start ?? 0, 0, Math.max(0, lyricLines.length - 1))
     global.app_event.setProgress((lyricLines[lineIndex]?.time ?? 0) / 1000)
-  }, [realPages, realPageCount, lyricLines, lockNav, requestSwitch, cancelSwitchSeek])
+  }, [realPages, realPageCount, lyricLines, lockNav, requestSwitch, cancelSwitchSeek, markSettle])
 
   const handleTogglePlay = useCallback(() => {
     togglePlay()
     cancelSwitchSeek()
-    anchorRef.current = false
-    syncModeRef.current = true
+    markSettle()
     setSelectedLine(null)
     const target = clamp(pageForLine(playLine), 0, Math.max(0, realPageCount - 1))
     pageRef.current = target
     setPage(target)
     pagerRef.current?.setPage(target + SENTINEL)
-  }, [pageForLine, playLine, realPageCount, cancelSwitchSeek])
+  }, [pageForLine, playLine, realPageCount, cancelSwitchSeek, markSettle])
 
   const renderPage = (slide: Slide) => (
     <TouchableWithoutFeedback key={slide.key} onPress={handleBlankPress} disabled={!!slide.sentinel}>
@@ -655,11 +648,11 @@ const styles = createStyle({
     flex: 1,
     minWidth: 0,
     textAlign: 'left',
-    fontWeight: '900',
+    fontWeight: '700',
   },
   headerSongName: {
     textAlign: 'left',
-    fontWeight: '900',
+    fontWeight: '700',
   },
   orderBadge: {
     // 与作者同处第二行、右对齐；歌名独占第一行完整宽度不被挤占
@@ -671,7 +664,7 @@ const styles = createStyle({
     marginLeft: 8,
   },
   orderText: {
-    fontWeight: '900',
+    fontWeight: '700',
     textAlign: 'right',
   },
   pager: {
